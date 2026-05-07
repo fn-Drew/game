@@ -11,8 +11,9 @@ int main(void) {
   InitWindow(screenWidth, screenHeight, "game window");
   SetTargetFPS(60);
 
-  const int speed = 100;
-  Vector2 deltaCircle = {0, (float)screenHeight/50.0f}; 
+  const int speed = 250;
+  Vector2 deltaCircle = {(float)screenWidth/2.0f, (float)screenHeight/2.0f}; 
+  int deltaCircle_radius = 5;
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
@@ -23,26 +24,26 @@ int main(void) {
     bool s_pressed = IsKeyDown(0x53);
     bool d_pressed = IsKeyDown(0x44);
 
-    if (w_pressed){
+    if (w_pressed && deltaCircle.y > 0 + deltaCircle_radius){
       deltaCircle.y -= GetFrameTime()*speed;
     }
 
-    if (a_pressed){
+    if (a_pressed && deltaCircle.x > 0 + deltaCircle_radius){
       deltaCircle.x -= GetFrameTime()*speed;
     }
 
-    if (s_pressed){
+    if (s_pressed && deltaCircle.y < screenHeight - deltaCircle_radius){
       deltaCircle.y += GetFrameTime()*speed;
     }
 
-    if (d_pressed){
+    if (d_pressed && deltaCircle.x < screenWidth - deltaCircle_radius){
       deltaCircle.x += GetFrameTime()*speed;
     }
 
     BeginDrawing();
 
       ClearBackground(RAYWHITE);
-      DrawText("Hello world!", 200, 200, 20, BLACK);
+      DrawText(TextFormat("Pos: %.1f, %.1f", deltaCircle.x, deltaCircle.y), 200, 200, 20, BLACK);
       DrawCircleV(deltaCircle, 5, RED);
 
     EndDrawing();
