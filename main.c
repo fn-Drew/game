@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <raylib.h>
+#include <raymath.h>
 
 #define TILE_WIDTH 80
 #define TILE_HEIGHT 80
@@ -56,21 +57,28 @@ void initializePlayer(Player *player) {
 }
 
 void updatePlayer(Player *player) {
+  Vector2 direction = {0, 0};
+  float *dir = (float *)&direction;
   // creates a new pointer to player->position as a float
   // for accessing player position with player->keys.axis in the loop
   float *pos = (float *)&player->position;
   for(int key = 0; key < KEY_COUNT; key++){
     // keep our player's key presses updated
     player->keys_pressed[key] = IsKeyDown(player->keys[key].code);
-
     // temporary pointer for brevity
     Key *k = &player->keys[key];
     // accesses player->position through pos[0] or pos[1] (x or y)
     // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
     if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
-      pos[k->axis] += k->direction * player->speed * GetFrameTime();
+      dir[k->axis] += k->direction;
     }
+    // pos[k->axis] += k->direction * player->speed * GetFrameTime();
   }
+  printf("dir before normalize: %.1f, %.1f\n", direction.x, direction.y);
+  direction = Vector2Normalize(direction);
+  pos[0] += direction.x * player->speed * GetFrameTime();
+  pos[1] += direction.y * player->speed * GetFrameTime();
+
 }
 
 int main(void) {
