@@ -1,3 +1,9 @@
+// #define WIN32_LEAN_AND_MEAN
+// #define NOGDI
+// #define NOUSER
+// #include <winsock2.h>
+// #include <windows.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,15 +11,32 @@
 #include <raylib.h>
 
 #define KEY_COUNT 4
+// #define SCREEN_HEIGHT = 800
+// #define SCREEN_WIDTH = 800
 
-const int screenWidth = 800;
-const int screenHeight = 800;
+// const int screenWidth = 800;
+// const int screenHeight = 800;
 
-int default_keys[4] = {'W','A','S','D'};
 typedef enum {W, A, S, D} PlayerKey;
 
+typedef enum {SCREEN_HEIGHT = 800, SCREEN_WIDTH = 800} Resolution;
+
+typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
 typedef struct {
-  int keys[KEY_COUNT];
+  char code;
+  int axis;
+  int direction;
+  int boundary;
+} Key;
+
+Key default_keys[KEY_COUNT] = {
+  {'W', AXIS_Y, -1, 0},
+  {'A', AXIS_X, -1, 0},
+  {'S', AXIS_Y,  1, SCREEN_HEIGHT},
+  {'D', AXIS_X,  1, SCREEN_WIDTH},
+};
+typedef struct {
+  Key keys[KEY_COUNT];
   bool keys_pressed[KEY_COUNT];
   int radius;
   int speed;
@@ -21,26 +44,43 @@ typedef struct {
 } Player;
 
 void initializePlayer(Player *player) {
-  for(int key = 0; key < KEY_COUNT; key++){
-    player->keys[key] = default_keys[key];
-  }
-  player->position = (Vector2){(float)screenWidth/2.0f, (float)screenHeight/2.0f};
+  player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
   player->speed= 250;
+  for(int key = 0; key < KEY_COUNT; key++){
+    // maps default keys and their axis + direction onto the new players keys
+    player->keys[key].code = default_keys[key].code;
+    player->keys[key].axis = default_keys[key].axis;
+    player->keys[key].direction = default_keys[key].direction;
+    player->keys[key].boundary = default_keys[key].boundary;
+  }
 }
 
 void updatePlayer(Player *player) {
+  // creates a new pointer to player->position as a float
+  // for accessing player position with player->keys.axis in the loop
+  float *pos = (float *)&player->position;
   for(int key = 0; key < KEY_COUNT; key++){
-    player->keys_pressed[key] = IsKeyDown(player->keys[key]);
+    // keep our player's key presses updated
+    player->keys_pressed[key] = IsKeyDown(player->keys[key].code);
+
+    // temporary pointer for brevity
+    Key *k = &player->keys[key];
+    // accesses player->position through pos[0] or pos[1] (x or y)
+    // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
+    // !!!!!! Only checks for screenHeight which works on square resolution, but if not we must add a boundary param to key struct
+    if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
+      pos[k->axis] += k->direction * player->speed * GetFrameTime();
+    }
   }
 }
 
 int main(void) {
   Player p1;
-  initializePlayer(&p1);
 
-  InitWindow(screenWidth, screenHeight, "game window");
+  InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   SetTargetFPS(60);
+  initializePlayer(&p1);
 
   const int speed = 250;
   int deltaCircle_radius = 5;
@@ -50,26 +90,12 @@ int main(void) {
     // Update variables here:
     updatePlayer(&p1);
 
-    if (p1.keys_pressed[W] && p1.position.y > 0 + p1.radius){
-      p1.position.y -= GetFrameTime()*speed;
-    }
-
-    if (p1.keys_pressed[A] && p1.position.x > 0 + p1.radius){
-      p1.position.x -= GetFrameTime()*speed;
-    }
-
-    if (p1.keys_pressed[S] && p1.position.y < screenHeight - p1.radius){
-      p1.position.y += GetFrameTime()*speed;
-    }
-
-    if (p1.keys_pressed[D] && p1.position.x < screenWidth - p1.radius){
-      p1.position.x += GetFrameTime()*speed;
-    }
-
     BeginDrawing();
 
       ClearBackground(RAYWHITE);
-      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x + 20, p1.position.y + 20), 200, 200, 20, BLACK);
+      // DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), p1.position.x + 20, p1.position.y + 20, 20, BLACK);
+      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
+      DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
 
     EndDrawing();
