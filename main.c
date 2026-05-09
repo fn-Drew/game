@@ -4,7 +4,11 @@
 #include <math.h>
 #include <raylib.h>
 
-#define WALL_COUNT 2
+#define TILE_WIDTH 80
+#define TILE_HEIGHT 80
+#define ROW_COUNT 10
+#define COLUMN_COUNT 10
+#define WALL_COUNT 100
 #define KEY_COUNT 4
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
@@ -34,8 +38,7 @@ typedef struct {
 } Player;
 
 Rectangle walls[WALL_COUNT] = {
-  {100, 200, 50, 200},
-  {500, 600, 200, 50},
+
 };
 
 
@@ -76,6 +79,25 @@ int main(void) {
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   SetTargetFPS(60);
   initializePlayer(&p1);
+  // loads the map
+  FILE* map = fopen("map.txt", "r");
+  if (map == NULL) {
+    return 0;
+  }
+  int char_count = 0;
+  for(int rows = 0; rows < ROW_COUNT; rows++){
+    for(int columns = 0; columns < COLUMN_COUNT; columns++){
+      // adds rectangle if character is a 1
+      char map_char = fgetc(map);
+        if(map_char == '1'){ 
+          walls[char_count] = (Rectangle){
+            columns * TILE_WIDTH, rows * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT}; 
+          char_count++; 
+      }
+    }
+    fgetc(map); // consume newline character
+  }
+  
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
@@ -84,11 +106,13 @@ int main(void) {
 
     updatePlayer(&p1);
 
-    for(int wall = 0; wall < WALL_COUNT; wall++){
+    // moves player out of walls to previous position
+    for(int wall = 0; wall < char_count; wall++){
     if(CheckCollisionCircleRec(p1.position, p1.radius, walls[wall])){ 
       p1.position = current_position; 
       }
     }
+
     BeginDrawing();
 
       ClearBackground(RAYWHITE);
@@ -97,7 +121,7 @@ int main(void) {
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
       
-      for(int wall = 0; wall < WALL_COUNT; wall++){
+      for(int wall = 0; wall < char_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
       };
 
