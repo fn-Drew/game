@@ -36,13 +36,7 @@ void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
   player->speed= 250;
-  for(int key = 0; key < KEY_COUNT; key++){
-    // maps default keys and their axis + direction onto the new players keys
-    player->keys[key].code = default_keys[key].code;
-    player->keys[key].axis = default_keys[key].axis;
-    player->keys[key].direction = default_keys[key].direction;
-    player->keys[key].boundary = default_keys[key].boundary;
-  }
+  memcpy(player->keys, default_keys, sizeof(default_keys));
 }
 
 void updatePlayer(Player *player) {
@@ -57,7 +51,7 @@ void updatePlayer(Player *player) {
     Key *k = &player->keys[key];
     // accesses player->position through pos[0] or pos[1] (x or y)
     // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
-    if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
+    if(player->keys_pressed[key] && k->direction * ((pos[k->axis]) + k->direction * player->radius) < (k->boundary)){
       pos[k->axis] += k->direction * player->speed * GetFrameTime();
     }
   }
