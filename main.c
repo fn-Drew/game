@@ -1,9 +1,3 @@
-// #define WIN32_LEAN_AND_MEAN
-// #define NOGDI
-// #define NOUSER
-// #include <winsock2.h>
-// #include <windows.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,15 +5,10 @@
 #include <raylib.h>
 
 #define KEY_COUNT 4
-// #define SCREEN_HEIGHT = 800
-// #define SCREEN_WIDTH = 800
-
-// const int screenWidth = 800;
-// const int screenHeight = 800;
+#define SCREEN_HEIGHT 800
+#define SCREEN_WIDTH 800
 
 typedef enum {W, A, S, D} PlayerKey;
-
-typedef enum {SCREEN_HEIGHT = 800, SCREEN_WIDTH = 800} Resolution;
 
 typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
 typedef struct {
@@ -68,7 +57,6 @@ void updatePlayer(Player *player) {
     Key *k = &player->keys[key];
     // accesses player->position through pos[0] or pos[1] (x or y)
     // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
-    // !!!!!! Only checks for screenHeight which works on square resolution, but if not we must add a boundary param to key struct
     if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
       pos[k->axis] += k->direction * player->speed * GetFrameTime();
     }
@@ -81,9 +69,6 @@ int main(void) {
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   SetTargetFPS(60);
   initializePlayer(&p1);
-
-  const int speed = 250;
-  int deltaCircle_radius = 5;
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
