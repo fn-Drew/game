@@ -4,6 +4,7 @@
 #include <math.h>
 #include <raylib.h>
 
+#define WALL_COUNT 2
 #define KEY_COUNT 4
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
@@ -31,6 +32,12 @@ typedef struct {
   int speed;
   Vector2 position;
 } Player;
+
+Rectangle walls[WALL_COUNT] = {
+  {100, 200, 50, 200},
+  {500, 600, 200, 50},
+};
+
 
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
@@ -73,8 +80,15 @@ int main(void) {
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
+    Vector2 current_position = p1.position;
+
     updatePlayer(&p1);
 
+    for(int wall = 0; wall < WALL_COUNT; wall++){
+    if(CheckCollisionCircleRec(p1.position, p1.radius, walls[wall])){ 
+      p1.position = current_position; 
+      }
+    }
     BeginDrawing();
 
       ClearBackground(RAYWHITE);
@@ -82,6 +96,10 @@ int main(void) {
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
+      
+      for(int wall = 0; wall < WALL_COUNT; wall++){
+        DrawRectangleRec(walls[wall], DARKGRAY);
+      };
 
     EndDrawing();
   }
