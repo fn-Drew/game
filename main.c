@@ -159,6 +159,17 @@ int main(void) {
         projectiles[i].active = false;
         }
     }
+    // projectile wall collision check loop
+    for (int wall = 0; wall < char_count; wall++)
+    {
+      for (int p = 0; p < PROJECTILE_COUNT; p++)
+      {
+        if(CheckCollisionPointRec(projectiles[p].position, walls[wall]) == true){
+          projectiles[p].active = false;
+        }
+      }
+      
+    }
     
 
     // moves player out of walls to previous position
@@ -170,7 +181,7 @@ int main(void) {
 
     BeginDrawing();
 
-      ClearBackground(RAYWHITE);
+      ClearBackground(LIGHTGRAY);
       // DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), p1.position.x + 20, p1.position.y + 20, 20, BLACK);
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
@@ -184,7 +195,7 @@ int main(void) {
         if(projectiles[i].active == true){ 
           DrawLineV(projectiles[i].position, Vector2Subtract(
             projectiles[i].position, Vector2Scale(projectiles[i].direction, 20)),
-           YELLOW); 
+           DARKBLUE); 
           }
       }
     EndDrawing();
