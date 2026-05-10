@@ -39,6 +39,7 @@ typedef struct {
   int radius;
   Vector2 position;
   Vector2 velocity;
+  float fire_timer;
 } Player;
 
 typedef struct {
@@ -71,6 +72,7 @@ Spark sparks[SPARK_COUNT] = {
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
+  player->fire_timer = 0.0f;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -176,9 +178,15 @@ int main(void) {
 
     updatePlayer(&p1);
     
+    p1.fire_timer += GetFrameTime();
+
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-    spawnProjectile(projectiles, &p1);
-    PlaySound(gunshot);
+      if (p1.fire_timer >= 1.0f / 15.0f)
+      {
+        spawnProjectile(projectiles, &p1);
+        PlaySound(gunshot);
+        p1.fire_timer = 0.0f;
+      }
     }
     //projectile update loop
     for (int i = 0; i < PROJECTILE_COUNT; i++)
