@@ -21,7 +21,7 @@ typedef enum {W, A, S, D} PlayerKey;
 
 typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
 typedef struct {
-  char code;
+  int code;
   int axis;
   int direction;
   int boundary;
@@ -33,6 +33,13 @@ Key default_keys[KEY_COUNT] = {
   {'S', AXIS_Y,  1, SCREEN_HEIGHT},
   {'D', AXIS_X,  1, SCREEN_WIDTH},
 };
+Key default_keys_p2[KEY_COUNT] = {
+  {KEY_UP, AXIS_Y, -1, 0},
+  {KEY_LEFT, AXIS_X, -1, 0},
+  {KEY_DOWN, AXIS_Y,  1, SCREEN_HEIGHT},
+  {KEY_RIGHT, AXIS_X,  1, SCREEN_WIDTH},
+};
+
 typedef struct {
   Key keys[KEY_COUNT];
   bool keys_pressed[KEY_COUNT];
@@ -158,6 +165,7 @@ void spawnSpark(Spark *sparks, Vector2 position){
 
 int main(void) {
   Player p1;
+  Player p2;
 
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   // sound
@@ -167,6 +175,7 @@ int main(void) {
 
   SetTargetFPS(60);
   initializePlayer(&p1);
+  initializePlayer(&p2);
   // loads the map
   FILE* map = fopen("map.txt", "r");
   if (map == NULL) {
@@ -260,6 +269,7 @@ int main(void) {
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
+      DrawCircleV(p2.position, 5, BLUE);
       
       for(int wall = 0; wall < char_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
