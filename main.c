@@ -17,6 +17,36 @@
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
 
+typedef enum {
+  P90,
+  AK47,
+  DESERT_EAGLE,
+  BARRETT_50CAL,
+  M4A1,
+  KNIFE,
+  SWORD,
+  HAMMER,
+  GRENADE,
+  SPEAR,
+  LAND_MINE
+} WeaponType;
+
+typedef struct{
+  WeaponType type;
+  int damage;
+  float cooldown;
+  float accuracy;
+  int magazine_size;
+  int current_ammo;
+  float reload_time;
+  float explosion_radius;
+  float fuse_time;
+  float throw_speed;
+  float range;
+  float swing_arc;
+  float attack_duration;
+} Weapon;
+
 typedef enum {W, A, S, D} PlayerKey;
 
 typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
@@ -48,6 +78,8 @@ typedef struct {
   Vector2 velocity;
   float fire_timer;
   int health;
+  Weapon weapons[2];
+  int active_weapon;
 } Player;
 
 typedef struct {
@@ -77,12 +109,29 @@ Spark sparks[SPARK_COUNT] = {
   0
 };
 
+Weapon weapon_list[] = {
+  {.type = P90, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
+  {.type = AK47, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
+  {.type = M4A1, .damage = 26, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
+  {.type = DESERT_EAGLE, .damage = 51, .cooldown = 0.21f, .accuracy = 0.95f, .magazine_size = 7, .current_ammo = 7, .reload_time = 1.5f},
+  {.type = BARRETT_50CAL, .damage = 100, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
+  {.type = KNIFE, .damage = 34, .cooldown = 0.1f, .range = 25.0f, .swing_arc = 15.0f, .attack_duration = 0.1f},
+  {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
+  {.type = HAMMER, .damage = 100, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
+  {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 3.0f, .throw_speed = 500},
+  {.type = SPEAR, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
+  {.type = LAND_MINE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 0.1f},
+};
+
 // functions
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
   player->health = 100;
   player->fire_timer = 0.0f;
+  player->weapons[0] = weapon_list[P90];
+  player->weapons[1] = weapon_list[KNIFE];
+  player->active_weapon = 0;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -136,7 +185,7 @@ else if(min_overlap == bottom_overlap)
     player->position.y = rec.y - player->radius;
 }
 
-void spawnProjectile(Projectile *projectiles, Player *player){
+void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
   for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
   {
     if (projectiles[proj].active == false)
@@ -145,8 +194,10 @@ void spawnProjectile(Projectile *projectiles, Player *player){
       projectiles[proj].direction = (Vector2Normalize(
         Vector2Subtract(
           GetMousePosition(), player->position)
-        )
-      );
+        ));
+      float spread = (1.0f - weapon.accuracy) * 10.0f;
+      float offset = (float)GetRandomValue((int)-spread, (int)spread);
+      projectiles[proj].direction = Vector2Rotate(projectiles[proj].direction, offset * DEG2RAD);
       projectiles[proj].speed = 2000;
       projectiles[proj].active = true;
       break;
@@ -165,6 +216,8 @@ void spawnSpark(Spark *sparks, Vector2 position){
     }
   }
 }
+
+
 
 int main(void) {
   Player p1;
@@ -207,12 +260,15 @@ int main(void) {
 
     updatePlayer(&p1);
     
+    if(IsKeyPressed(KEY_Q)){
+      p1.active_weapon = (p1.active_weapon == 0) ? 1 : 0;
+    }
     p1.fire_timer += GetFrameTime();
 
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-      if (p1.fire_timer >= 1.0f / 15.0f)
+      if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown)
       {
-        spawnProjectile(projectiles, &p1);
+        spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon]);
         PlaySound(gunshot);
         p1.fire_timer = 0.0f;
       }
@@ -281,6 +337,7 @@ int main(void) {
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
+      DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
       DrawCircleV(p2.position, 5, BLUE);
       
