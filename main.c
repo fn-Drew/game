@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define PROJECTILE_COUNT 100
 #define TILE_WIDTH 80
 #define TILE_HEIGHT 80
 #define ROW_COUNT 10
@@ -38,11 +39,23 @@ typedef struct {
   Vector2 position;
 } Player;
 
-Rectangle walls[WALL_COUNT] = {
+typedef struct {
+  Vector2 position;
+  Vector2 direction;
+  float speed;
+  bool active;
+} Projectile;
 
+// arrays
+Rectangle walls[WALL_COUNT] = {
+  0
 };
 
+Projectile projectiles[PROJECTILE_COUNT] = {
+  0
+};
 
+// functions
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
@@ -72,13 +85,29 @@ void updatePlayer(Player *player) {
     if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
       dir[k->axis] += k->direction;
     }
-    // pos[k->axis] += k->direction * player->speed * GetFrameTime();
   }
-  printf("dir before normalize: %.1f, %.1f\n", direction.x, direction.y);
+  // normalizes diagonal movement
   direction = Vector2Normalize(direction);
   pos[0] += direction.x * player->speed * GetFrameTime();
   pos[1] += direction.y * player->speed * GetFrameTime();
+}
 
+void spawnProjectile(Projectile *projectiles, Player *player){
+  for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
+  {
+    if (projectiles[proj].active == false)
+    {
+      projectiles[proj].position = player->position;
+      projectiles[proj].direction = (Vector2Normalize(
+        Vector2Subtract(
+          GetMousePosition(), player->position)
+        )
+      );
+      projectiles[proj].speed = 2000;
+      projectiles[proj].active = true;
+      break;
+    }
+  }
 }
 
 int main(void) {
@@ -92,10 +121,11 @@ int main(void) {
   if (map == NULL) {
     return 0;
   }
+  // generates the map from the file
   int char_count = 0;
   for(int rows = 0; rows < ROW_COUNT; rows++){
     for(int columns = 0; columns < COLUMN_COUNT; columns++){
-      // adds rectangle if character is a 1
+      // adds rectangle to walls array if character is a 1
       char map_char = fgetc(map);
         if(map_char == '1'){ 
           walls[char_count] = (Rectangle){
@@ -113,6 +143,23 @@ int main(void) {
     Vector2 current_position = p1.position;
 
     updatePlayer(&p1);
+    
+    if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+    spawnProjectile(projectiles, &p1);
+    }
+    //projectile update loop
+    for (int i = 0; i < PROJECTILE_COUNT; i++)
+    {
+      projectiles[i].position = Vector2Add(projectiles[i].position, 
+        Vector2Scale(projectiles[i].direction, projectiles[i].speed * GetFrameTime()));
+        // deactivates projectiles if they go off screen
+        if (projectiles[i].position.x > 800 || projectiles[i].position.x < 0 
+        || projectiles[i].position.y > 800 || projectiles[i].position.y < 0)
+        {
+        projectiles[i].active = false;
+        }
+    }
+    
 
     // moves player out of walls to previous position
     for(int wall = 0; wall < char_count; wall++){
@@ -132,7 +179,14 @@ int main(void) {
       for(int wall = 0; wall < char_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
       };
-
+      // draws projectiles with a tracer
+      for (int i = 0; i < PROJECTILE_COUNT; i++){ 
+        if(projectiles[i].active == true){ 
+          DrawLineV(projectiles[i].position, Vector2Subtract(
+            projectiles[i].position, Vector2Scale(projectiles[i].direction, 20)),
+           YELLOW); 
+          }
+      }
     EndDrawing();
   }
   CloseWindow();
