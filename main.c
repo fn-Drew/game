@@ -109,6 +109,23 @@ void updatePlayer(Player *player) {
   pos[1] += player->velocity.y * GetFrameTime();
 }
 
+void resolveCollision(Player *player, Rectangle rec){
+  float left_overlap = (rec.x + rec.width) - (player->position.x - player->radius);
+  float right_overlap = (player->position.x + player->radius) - (rec.x);
+  float top_overlap = (rec.y + rec.height) - (player->position.y - player->radius);
+  float bottom_overlap = (player->position.y + player->radius) - (rec.y);
+  // checks which overlap is smallest and pushes player out of wall
+  float min_overlap = fminf(fminf(left_overlap, right_overlap), fminf(top_overlap, bottom_overlap));
+  if(min_overlap == left_overlap)
+    player->position.x = rec.x + rec.width + player->radius;
+else if(min_overlap == right_overlap)
+    player->position.x = rec.x - player->radius;
+else if(min_overlap == top_overlap)
+    player->position.y = rec.y + rec.height + player->radius;
+else if(min_overlap == bottom_overlap)
+    player->position.y = rec.y - player->radius;
+}
+
 void spawnProjectile(Projectile *projectiles, Player *player){
   for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
   {
@@ -232,7 +249,7 @@ int main(void) {
     // moves player out of walls to previous position
     for(int wall = 0; wall < char_count; wall++){
     if(CheckCollisionCircleRec(p1.position, p1.radius, walls[wall])){ 
-      p1.position = current_position; 
+      resolveCollision(&p1, walls[wall]); 
       }
     }
 
