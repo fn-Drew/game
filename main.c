@@ -80,6 +80,8 @@ typedef struct {
   int health;
   Weapon weapons[2];
   int active_weapon;
+  float reload_timer;
+  bool is_reloading;
 } Player;
 
 typedef struct {
@@ -132,6 +134,8 @@ void initializePlayer(Player *player) {
   player->weapons[0] = weapon_list[P90];
   player->weapons[1] = weapon_list[KNIFE];
   player->active_weapon = 0;
+  player->reload_timer = 0.0f;
+  player->is_reloading = false;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -190,6 +194,7 @@ void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
   {
     if (projectiles[proj].active == false)
     {
+      player->weapons[player->active_weapon].current_ammo--;
       projectiles[proj].position = player->position;
       projectiles[proj].direction = (Vector2Normalize(
         Vector2Subtract(
@@ -260,19 +265,36 @@ int main(void) {
 
     updatePlayer(&p1);
     
+    // weapon switch
     if(IsKeyPressed(KEY_Q)){
       p1.active_weapon = (p1.active_weapon == 0) ? 1 : 0;
     }
     p1.fire_timer += GetFrameTime();
 
+    //firing check
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-      if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown)
-      {
+      if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
+      && p1.weapons[p1.active_weapon].current_ammo > 0
+      && !p1.is_reloading){
         spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon]);
         PlaySound(gunshot);
         p1.fire_timer = 0.0f;
       }
     }
+
+    // reloading check
+    if(IsKeyPressed(KEY_R) && !p1.is_reloading){
+     p1.is_reloading = true;
+      p1.reload_timer = p1.weapons[p1.active_weapon].reload_time;
+    }
+
+    if(p1.is_reloading){
+    p1.reload_timer -= GetFrameTime();
+    if(p1.reload_timer <= 0){
+      p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
+      p1.is_reloading = false;
+    }
+  }
     //projectile update loop
     for (int i = 0; i < PROJECTILE_COUNT; i++)
     {
@@ -333,11 +355,6 @@ int main(void) {
     BeginDrawing();
 
       ClearBackground(LIGHTGRAY);
-      // DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), p1.position.x + 20, p1.position.y + 20, 20, BLACK);
-      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
-      DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
-      DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
-      DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
       DrawCircleV(p2.position, 5, BLUE);
       
@@ -357,6 +374,16 @@ int main(void) {
         if(sparks[s].active == true){
           DrawCircleV(sparks[s].position, 3, ORANGE);
         }
+      }
+      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
+      DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
+      DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
+      DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
+      DrawText(TextFormat("Ammo: %d / %d", 
+      p1.weapons[p1.active_weapon].current_ammo, 
+      p1.weapons[p1.active_weapon].magazine_size), 20, 80, 20, BLACK);
+      if(p1.is_reloading){
+        DrawText("Reloading...", 20, 100, 20, RED);
       }
     EndDrawing();
   }
