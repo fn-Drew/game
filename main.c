@@ -37,7 +37,6 @@ typedef struct {
   Key keys[KEY_COUNT];
   bool keys_pressed[KEY_COUNT];
   int radius;
-  int speed;
   Vector2 position;
   Vector2 velocity;
 } Player;
@@ -72,7 +71,6 @@ Spark sparks[SPARK_COUNT] = {
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
-  player->speed= 250;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -143,6 +141,11 @@ int main(void) {
   Player p1;
 
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
+  // sound
+  InitAudioDevice();
+  Sound gunshot = LoadSound("gunshot.wav");
+  Sound impact = LoadSound("impact.wav");
+
   SetTargetFPS(60);
   initializePlayer(&p1);
   // loads the map
@@ -175,6 +178,7 @@ int main(void) {
     
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
     spawnProjectile(projectiles, &p1);
+    PlaySound(gunshot);
     }
     //projectile update loop
     for (int i = 0; i < PROJECTILE_COUNT; i++)
@@ -198,6 +202,7 @@ int main(void) {
         if(projectiles[p].active == true){
           if(CheckCollisionPointRec(projectiles[p].position, walls[wall]) == true){
             spawnSpark(sparks, projectiles[p].position);
+            PlaySound(impact);
             projectiles[p].active = false;
           }
         }
@@ -239,17 +244,20 @@ int main(void) {
         if(projectiles[i].active == true){ 
           DrawLineEx(projectiles[i].position, Vector2Subtract(
             projectiles[i].position, Vector2Scale(projectiles[i].direction, 20)),
-           3.0f, DARKBLUE); 
+           3.0f, ORANGE); 
           }
       }
       // draws sparks when projectiles hit a wall
       for (int s = 0; s < SPARK_COUNT; s++){
         if(sparks[s].active == true){
-          DrawCircleV(sparks[s].position, 3, DARKBLUE);
+          DrawCircleV(sparks[s].position, 3, ORANGE);
         }
       }
     EndDrawing();
   }
+  UnloadSound(gunshot);
+  UnloadSound(impact);
+  CloseAudioDevice();
   CloseWindow();
 
   return 0;
