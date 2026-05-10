@@ -47,10 +47,12 @@ typedef struct {
   Vector2 position;
   Vector2 velocity;
   float fire_timer;
+  int health;
 } Player;
 
 typedef struct {
   Vector2 position;
+  Vector2 prev_position;
   Vector2 direction;
   float speed;
   bool active;
@@ -79,6 +81,7 @@ Spark sparks[SPARK_COUNT] = {
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
+  player->health = 100;
   player->fire_timer = 0.0f;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
@@ -218,6 +221,7 @@ int main(void) {
     for (int i = 0; i < PROJECTILE_COUNT; i++)
     {
       if(projectiles[i].active == true){
+      projectiles[i].prev_position = projectiles[i].position;
       projectiles[i].position = Vector2Add(projectiles[i].position, 
         Vector2Scale(projectiles[i].direction, projectiles[i].speed * GetFrameTime()));
         // deactivates projectiles if they go off screen
@@ -241,6 +245,14 @@ int main(void) {
           }
         }
       }     
+    }
+    // projectile player collision check loop
+    for (int p = 0; p < PROJECTILE_COUNT; p++){
+      if(projectiles[p].active == true &&
+      CheckCollisionCircleLine(p2.position, p2.radius, projectiles[p].position, projectiles[p].prev_position) == true){
+        p2.health -= 20; // currently p2 only for testing
+        projectiles[p].active = false;
+      }
     }
     // spark effect update loop
     for (int s = 0; s < SPARK_COUNT; s++)
@@ -268,6 +280,7 @@ int main(void) {
       // DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), p1.position.x + 20, p1.position.y + 20, 20, BLACK);
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
+      DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
       DrawCircleV(p1.position, 5, RED);
       DrawCircleV(p2.position, 5, BLUE);
       
