@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define SPARK_COUNT 100
 #define PROJECTILE_COUNT 100
 #define TILE_WIDTH 80
 #define TILE_HEIGHT 80
@@ -46,12 +47,22 @@ typedef struct {
   bool active;
 } Projectile;
 
+typedef struct {
+  Vector2 position;
+  float stay_time;
+  bool active;
+} Spark;
+
 // arrays
 Rectangle walls[WALL_COUNT] = {
   0
 };
 
 Projectile projectiles[PROJECTILE_COUNT] = {
+  0
+};
+
+Spark sparks[SPARK_COUNT] = {
   0
 };
 
@@ -110,6 +121,18 @@ void spawnProjectile(Projectile *projectiles, Player *player){
   }
 }
 
+void spawnSpark(Spark *sparks, Vector2 position){
+  for (int s = 0; s < SPARK_COUNT; s++)
+  {
+    if (sparks[s].active == false){
+        sparks[s].position = position;
+        sparks[s].stay_time = 0.1f;
+        sparks[s].active = true;
+        break;
+    }
+  }
+}
+
 int main(void) {
   Player p1;
 
@@ -144,12 +167,13 @@ int main(void) {
 
     updatePlayer(&p1);
     
-    if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+    if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
     spawnProjectile(projectiles, &p1);
     }
     //projectile update loop
     for (int i = 0; i < PROJECTILE_COUNT; i++)
     {
+      if(projectiles[i].active == true){
       projectiles[i].position = Vector2Add(projectiles[i].position, 
         Vector2Scale(projectiles[i].direction, projectiles[i].speed * GetFrameTime()));
         // deactivates projectiles if they go off screen
@@ -158,18 +182,32 @@ int main(void) {
         {
         projectiles[i].active = false;
         }
+      }
     }
     // projectile wall collision check loop
     for (int wall = 0; wall < char_count; wall++)
     {
       for (int p = 0; p < PROJECTILE_COUNT; p++)
       {
-        if(CheckCollisionPointRec(projectiles[p].position, walls[wall]) == true){
-          projectiles[p].active = false;
+        if(projectiles[p].active == true){
+          if(CheckCollisionPointRec(projectiles[p].position, walls[wall]) == true){
+            spawnSpark(sparks, projectiles[p].position);
+            projectiles[p].active = false;
+          }
+        }
+      }     
+    }
+    // spark effect update loop
+    for (int s = 0; s < SPARK_COUNT; s++)
+    {
+      if(sparks[s].active == true){
+        sparks[s].stay_time -= GetFrameTime();
+        if(sparks[s].stay_time <= 0){
+            sparks[s].active = false;
         }
       }
-      
     }
+    
     
 
     // moves player out of walls to previous position
@@ -197,6 +235,12 @@ int main(void) {
             projectiles[i].position, Vector2Scale(projectiles[i].direction, 20)),
            DARKBLUE); 
           }
+      }
+      // draws sparks when projectiles hit a wall
+      for (int s = 0; s < SPARK_COUNT; s++){
+        if(sparks[s].active == true){
+          DrawCircleV(sparks[s].position, 3, DARKBLUE);
+        }
       }
     EndDrawing();
   }
