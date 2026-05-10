@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define PLAYER_ACCELERATION 2500
 #define SPARK_COUNT 100
 #define PROJECTILE_COUNT 100
 #define TILE_WIDTH 80
@@ -38,6 +39,7 @@ typedef struct {
   int radius;
   int speed;
   Vector2 position;
+  Vector2 velocity;
 } Player;
 
 typedef struct {
@@ -97,10 +99,14 @@ void updatePlayer(Player *player) {
       dir[k->axis] += k->direction;
     }
   }
-  // normalizes diagonal movement
-  direction = Vector2Normalize(direction);
-  pos[0] += direction.x * player->speed * GetFrameTime();
-  pos[1] += direction.y * player->speed * GetFrameTime();
+  direction = Vector2Normalize(direction); // normalizes diagonal movement
+  // gets velocity from direction and acceleration
+  player->velocity = Vector2Add(player->velocity, Vector2Scale(
+    direction, PLAYER_ACCELERATION * GetFrameTime()));
+  player->velocity = Vector2Scale(player->velocity, 0.85f); // slows dowm movement with friction
+  // moves player with velocity
+  pos[0] += player->velocity.x * GetFrameTime();
+  pos[1] += player->velocity.y * GetFrameTime();
 }
 
 void spawnProjectile(Projectile *projectiles, Player *player){
@@ -231,9 +237,9 @@ int main(void) {
       // draws projectiles with a tracer
       for (int i = 0; i < PROJECTILE_COUNT; i++){ 
         if(projectiles[i].active == true){ 
-          DrawLineV(projectiles[i].position, Vector2Subtract(
+          DrawLineEx(projectiles[i].position, Vector2Subtract(
             projectiles[i].position, Vector2Scale(projectiles[i].direction, 20)),
-           DARKBLUE); 
+           3.0f, DARKBLUE); 
           }
       }
       // draws sparks when projectiles hit a wall
