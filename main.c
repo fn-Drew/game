@@ -530,6 +530,8 @@ int main(void) {
   camera.rotation = 0.0f;
   camera.zoom = 1.0f;
 
+  RenderTexture2D vision_mask = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
@@ -751,12 +753,39 @@ int main(void) {
 
     camera.target = p1.position; // updates camera each frame before draw
 
+    // draw vision mask
+    float cone_start = (p1.facing_angle * RAD2DEG) - (p1.fov / 2);
+    float cone_end = (p1.facing_angle * RAD2DEG) + (p1.fov / 2);
+    BeginTextureMode(vision_mask);
+    ClearBackground((Color){0, 0, 0, 128});
+    DrawCircleSector(
+      (Vector2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f},
+      600.0f,
+      cone_start,
+      cone_end,
+      32,
+      WHITE
+    );
+    EndTextureMode();
+
     BeginDrawing();
       ClearBackground(LIGHTGRAY);
       BeginMode2D(camera);
       DrawCircleV(p1.position, 5, RED);
-      DrawCircleV(p2.position, 5, BLUE);
-      
+
+      Vector2 to_p2 = Vector2Subtract(p2.position, p1.position);
+      float angle_to_p2 = atan2f(to_p2.y, to_p2.x);
+      float angle_diff = angle_to_p2 - p1.facing_angle;
+      while(angle_diff > M_PI) angle_diff -= 2 * M_PI;
+      while(angle_diff < -M_PI) angle_diff += 2 * M_PI;
+
+      float half_fov = p1.fov / 2 * DEG2RAD;
+      float fade_zone = 0.2f; // radians, tune this
+      float visibility = 1.0f - ((fabsf(angle_diff) - (half_fov - fade_zone)) / fade_zone);
+      visibility = fmaxf(0.0f, fminf(1.0f, visibility));
+
+      DrawCircleV(p2.position, 5, ColorAlpha(BLUE, visibility));
+
       for(int wall = 0; wall < char_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
       };
@@ -813,19 +842,17 @@ int main(void) {
           DrawCircleV(grenades[i].position, 5, DARKGREEN);
         }
       }
-      // draws vision cone
-      float cone_start = (p1.facing_angle * RAD2DEG) - (p1.fov / 2);
-      float cone_end = (p1.facing_angle * RAD2DEG) + (p1.fov / 2);
-
-      DrawCircleSector(
-      p1.position,
-      600.0f,
-      cone_start,
-      cone_end,
-      32,
-      ColorAlpha(WHITE, 0.15f)
-      );
       EndMode2D();
+
+      BeginBlendMode(BLEND_MULTIPLIED);
+        DrawTextureRec(
+         vision_mask.texture,
+          (Rectangle){0, 0, SCREEN_WIDTH, -SCREEN_HEIGHT},
+          (Vector2){0, 0},
+         WHITE
+       );
+      EndBlendMode();
+      
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
@@ -844,6 +871,7 @@ int main(void) {
   UnloadSound(pinpull);
   UnloadSound(he_bounce);
   UnloadSound(explode);
+  UnloadRenderTexture(vision_mask);
   CloseAudioDevice();
   CloseWindow();
 
