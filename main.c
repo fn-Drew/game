@@ -150,7 +150,7 @@ Pickup pickups[PICKUP_COUNT] = {
 };
 
 Grenade grenades[GRENADE_COUNT] = {
-
+  0
 };
 
 Weapon weapon_list[] = {
@@ -317,6 +317,29 @@ bool isMeleeWeapon(WeaponType type){
 }
 bool isThrowableWeapon(WeaponType type){
   return type == GRENADE || type == SPEAR || type == LAND_MINE;
+}
+// line rec helper for grenade wall collision
+bool checkCollisionLineRec(Grenade *grenades, Rectangle rec){
+  Vector2 collision_point;
+  if (CheckCollisionLines(
+      grenades->prev_position, grenades->position,
+      (Vector2){rec.x, rec.y}, (Vector2){rec.x + rec.width, rec.y},
+      &collision_point)
+  || CheckCollisionLines(
+      grenades->prev_position, grenades->position, 
+      (Vector2){rec.x, rec.y + rec.height}, (Vector2){rec.x + rec.width, rec.y + rec.height},
+      &collision_point)
+  || CheckCollisionLines(
+      grenades->prev_position, grenades->position, 
+      (Vector2){rec.x, rec.y}, (Vector2){rec.x, rec.y + rec.height},
+      &collision_point)
+  || CheckCollisionLines(
+      grenades->prev_position, grenades->position, 
+      (Vector2){rec.x + rec.width, rec.y}, (Vector2){rec.x + rec.width, rec.y + rec.height},
+      &collision_point)){
+    return true;
+  }
+  return false;
 }
 
 int main(void) {
@@ -488,17 +511,21 @@ int main(void) {
     for (int i = 0; i < GRENADE_COUNT; i++)
     {
       if(grenades[i].active == true){
-        grenades[i].prev_position = grenades[i].position;
-        grenades[i].position = Vector2Add(grenades[i].position, 
-          Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime())); // position update
-          for(int wall = 0; wall < char_count; wall++)
+        int steps = 5;
+        for(int step = 0; step < steps; step++){
+          grenades[i].prev_position = grenades[i].position;
+          grenades[i].position = Vector2Add(grenades[i].position, 
+            Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime() / steps));
+          for(int wall = 0; wall < char_count; wall++){
             if(CheckCollisionCircleRec(grenades[i].position, 5.0f, walls[wall])){
               bounceGrenade(&grenades[i], walls[wall]);
             }
+          }
+        }
         grenades[i].fuse_timer -= GetFrameTime();
         if (grenades[i].fuse_timer <= 0){
           if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
-            p2.health -= grenades[i].damage; // damage
+            p2.health -= grenades[i].damage;
           }
           grenades[i].active = false;
         }
