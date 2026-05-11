@@ -13,9 +13,9 @@
 #define PROJECTILE_COUNT 100
 #define TILE_WIDTH 80
 #define TILE_HEIGHT 80
-#define ROW_COUNT 10
-#define COLUMN_COUNT 10
-#define WALL_COUNT 100
+#define ROW_COUNT 20
+#define COLUMN_COUNT 20
+#define WALL_COUNT 400
 #define KEY_COUNT 4
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
@@ -101,8 +101,8 @@ typedef struct {
 Key default_keys[KEY_COUNT] = {
   {'W', AXIS_Y, -1, 0},
   {'A', AXIS_X, -1, 0},
-  {'S', AXIS_Y,  1, SCREEN_HEIGHT},
-  {'D', AXIS_X,  1, SCREEN_WIDTH},
+  {'S', AXIS_Y,  1, ROW_COUNT * TILE_HEIGHT},
+  {'D', AXIS_X,  1, COLUMN_COUNT * TILE_WIDTH},
 };
 Key default_keys_p2[KEY_COUNT] = {
   {KEY_UP, AXIS_Y, -1, 0},
@@ -277,7 +277,7 @@ void bounceGrenade(Grenade *grenades, Rectangle rec){
   }
 }
 
-void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
+void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon, Camera2D camera){
   for (int i = 0; i < GRENADE_COUNT; i++){
     if (grenades[i].active == false)
     {
@@ -285,7 +285,7 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
     grenades[i].position = player->position;
     grenades[i].direction = (Vector2Normalize(
         Vector2Subtract(
-          GetMousePosition(), player->position)
+          GetScreenToWorld2D(GetMousePosition(), camera), player->position)
         ));
     grenades[i].friction = 0.98f;
     grenades[i].speed = weapon.throw_speed;
@@ -297,7 +297,7 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
     }
   }
 }
-void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
+void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon, Camera2D camera){
   for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
   {
     if (projectiles[proj].active == false)
@@ -306,7 +306,7 @@ void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
       projectiles[proj].position = player->position;
       projectiles[proj].direction = (Vector2Normalize(
         Vector2Subtract(
-          GetMousePosition(), player->position)
+          GetScreenToWorld2D(GetMousePosition(), camera), player->position)
         ));
       float spread = (1.0f - weapon.accuracy) * 10.0f;
       float speed = Vector2Length(player->velocity);
@@ -457,6 +457,12 @@ int main(void) {
     fgetc(map); // consume newline character
   }
   
+  // camera declaration
+  Camera2D camera = {0};
+  camera.target = p1.position;
+  camera.offset = (Vector2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f};
+  camera.rotation = 0.0f;
+  camera.zoom = 1.0f;
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
@@ -475,7 +481,7 @@ int main(void) {
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
       if(isMeleeWeapon(p1.weapons[p1.active_weapon].type)){
         if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          Vector2 to_mouse = Vector2Subtract(GetMousePosition(), p1.position);
+          Vector2 to_mouse = Vector2Subtract(GetScreenToWorld2D(GetMousePosition(), camera), p1.position);
           float aim_angle = atan2f(to_mouse.y, to_mouse.x);
           p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
           p1.is_attacking = true;
@@ -485,7 +491,7 @@ int main(void) {
       } 
       else if(isThrowableWeapon(p1.weapons[p1.active_weapon].type)){
         if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon]);
+          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon], camera);
           PlaySound(pinpull);
           p1.fire_timer = 0.0f;
         }
@@ -494,7 +500,7 @@ int main(void) {
         if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
           && p1.weapons[p1.active_weapon].current_ammo > 0
           && !p1.is_reloading){
-            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon]);
+            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon], camera);
             PlaySound(gunshot);
             p1.fire_timer = 0.0f;
         }
@@ -539,8 +545,8 @@ int main(void) {
       projectiles[i].position = Vector2Add(projectiles[i].position, 
         Vector2Scale(projectiles[i].direction, projectiles[i].speed * GetFrameTime()));
         // deactivates projectiles if they go off screen
-        if (projectiles[i].position.x > 800 || projectiles[i].position.x < 0 
-        || projectiles[i].position.y > 800 || projectiles[i].position.y < 0)
+        if (projectiles[i].position.x > COLUMN_COUNT * TILE_WIDTH || projectiles[i].position.x < 0 
+        || projectiles[i].position.y > ROW_COUNT * TILE_HEIGHT || projectiles[i].position.y < 0)
         {
         projectiles[i].active = false;
         }
@@ -658,8 +664,10 @@ int main(void) {
       }
     }
 
-    BeginDrawing();
+    camera.target = p1.position; // updates camera each frame before draw
 
+    BeginDrawing();
+      BeginMode2D(camera);
       ClearBackground(LIGHTGRAY);
       DrawCircleV(p1.position, 5, RED);
       DrawCircleV(p2.position, 5, BLUE);
@@ -713,6 +721,7 @@ int main(void) {
           DrawCircleV(grenades[i].position, 5, DARKGREEN);
         }
       }
+      EndMode2D();
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
       DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
