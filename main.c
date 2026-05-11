@@ -99,6 +99,9 @@ typedef struct {
   float reload_timer;
   bool is_reloading;
   int armor;
+  bool is_attacking;
+  float attack_timer;
+  float attack_angle;
 } Player;
 
 typedef struct {
@@ -158,6 +161,9 @@ void initializePlayer(Player *player) {
   player->active_weapon = 0;
   player->reload_timer = 0.0f;
   player->is_reloading = false;
+  player->is_attacking = false;
+  player->attack_timer = 0.0f;
+  player->attack_angle = 0.0f;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -244,7 +250,9 @@ void spawnSpark(Spark *sparks, Vector2 position){
   }
 }
 
-
+bool isMeleeWeapon(WeaponType type){
+  return type == KNIFE || type == SWORD || type == HAMMER;
+}
 
 int main(void) {
   Player p1;
@@ -336,15 +344,43 @@ int main(void) {
 
     //firing check
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-      if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
-      && p1.weapons[p1.active_weapon].current_ammo > 0
-      && !p1.is_reloading){
-        spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon]);
-        PlaySound(gunshot);
-        p1.fire_timer = 0.0f;
+      if(isMeleeWeapon(p1.weapons[p1.active_weapon].type)){
+        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
+          Vector2 to_mouse = Vector2Subtract(GetMousePosition(), p1.position);
+          float aim_angle = atan2f(to_mouse.y, to_mouse.x);
+          p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
+          p1.is_attacking = true;
+          p1.fire_timer = 0.0f;
+        }
+      } 
+      else {
+        if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
+          && p1.weapons[p1.active_weapon].current_ammo > 0
+          && !p1.is_reloading){
+            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon]);
+            PlaySound(gunshot);
+            p1.fire_timer = 0.0f;
+        }
       }
     }
-
+    // melee swing update
+    if(p1.is_attacking){
+      Weapon *w = &p1.weapons[p1.active_weapon];
+      float swing_speed = (w->swing_arc * DEG2RAD) / w->attack_duration;
+      p1.attack_angle += swing_speed * GetFrameTime();
+      p1.attack_timer += GetFrameTime();
+      Vector2 weapon_tip = {
+        p1.position.x + cosf(p1.attack_angle) * p1.weapons[p1.active_weapon].range,
+        p1.position.y + sinf(p1.attack_angle) * p1.weapons[p1.active_weapon].range
+      };
+      if(CheckCollisionCircleLine(p2.position, p2.radius, p1.position, weapon_tip)){
+        p2.health -= p1.weapons[p1.active_weapon].damage;
+      }
+      if(p1.attack_timer >= w->attack_duration){
+        p1.is_attacking = false;
+        p1.attack_timer = 0.0f;
+      }
+    }
     // reloading check
     if(IsKeyPressed(KEY_R) && !p1.is_reloading){
      p1.is_reloading = true;
@@ -406,7 +442,28 @@ int main(void) {
       }
     }
     
-    
+    // pickup effects
+      for(int i = 0; i < pickup_count; i++){
+        if(pickups[i].active == true){
+          if(CheckCollisionCircles(p1.position, p1.radius, pickups[i].position, 10)){
+            if(pickups[i].type == PICKUP_HEALTH){
+              p1.health += pickups[i].value;
+                if(p1.health > 100) {
+                  p1.health = 100;}
+            }
+            else if(pickups[i].type == PICKUP_WEAPON){
+              p1.weapons[p1.active_weapon] = weapon_list[pickups[i].weapon];
+            }
+            else if(pickups[i].type == PICKUP_AMMO){
+              p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
+            }
+            else if(pickups[i].type == PICKUP_ARMOR){
+              p1.armor +=pickups[i].value;
+            }
+            pickups[i].active = false;
+          }
+        }
+      }
 
     // moves player out of walls to previous position
     for(int wall = 0; wall < char_count; wall++){
@@ -449,27 +506,13 @@ int main(void) {
           DrawCircleV(pickups[i].position, 10, pickup_color);
         }
       }
-      // pickup effects
-      for(int i = 0; i < pickup_count; i++){
-        if(pickups[i].active == true){
-          if(CheckCollisionCircles(p1.position, p1.radius, pickups[i].position, 10)){
-            if(pickups[i].type == PICKUP_HEALTH){
-              p1.health += pickups[i].value;
-                if(p1.health > 100) {
-                  p1.health = 100;}
-            }
-            else if(pickups[i].type == PICKUP_WEAPON){
-              p1.weapons[p1.active_weapon] = weapon_list[pickups[i].weapon];
-            }
-            else if(pickups[i].type == PICKUP_AMMO){
-              p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
-            }
-            else if(pickups[i].type == PICKUP_ARMOR){
-              p1.armor +=pickups[i].value;
-            }
-            pickups[i].active = false;
-          }
-        }
+      // draws melee swings
+      if(p1.is_attacking){
+        Vector2 weapon_tip = {
+        p1.position.x + cosf(p1.attack_angle) * p1.weapons[p1.active_weapon].range,
+        p1.position.y + sinf(p1.attack_angle) * p1.weapons[p1.active_weapon].range
+        };
+        DrawLineEx(p1.position, weapon_tip, 3.0f, DARKGRAY);
       }
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
