@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define EXPLOSION_COUNT 20
 #define GRENADE_COUNT 100
 #define PICKUP_COUNT 20
 #define PLAYER_ACCELERATION 2500
@@ -60,6 +61,15 @@ typedef struct{
   float friction;
   Vector2 prev_position;
 } Grenade;
+
+typedef struct{
+Vector2 position;
+float radius;
+float max_radius;
+float timer;
+float duration;
+bool active;
+} Explosion;
 
 typedef enum {
   PICKUP_WEAPON,
@@ -150,6 +160,10 @@ Pickup pickups[PICKUP_COUNT] = {
 };
 
 Grenade grenades[GRENADE_COUNT] = {
+  0
+};
+
+Explosion explosions[EXPLOSION_COUNT] = {
   0
 };
 
@@ -269,6 +283,7 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
         Vector2Subtract(
           GetMousePosition(), player->position)
         ));
+    grenades[i].friction = 0.98f;
     grenades[i].speed = weapon.throw_speed;
     grenades[i].fuse_timer = weapon.fuse_time;
     grenades[i].damage = weapon.damage;
@@ -308,6 +323,22 @@ void spawnSpark(Spark *sparks, Vector2 position){
         sparks[s].stay_time = 0.1f;
         sparks[s].active = true;
         break;
+    }
+  }
+}
+
+void spawnExplosion(Explosion *explosions, Vector2 position, float max_radius){
+  for (int i = 0; i < EXPLOSION_COUNT; i++)
+  {
+    if (explosions[i].active == false)
+    {
+      explosions[i].position = position;
+      explosions[i].max_radius = max_radius;
+      explosions[i].radius = 0;
+      explosions[i].duration = 0.3f;
+      explosions[i].timer = 0.3f;
+      explosions[i].active = true;
+      break;
     }
   }
 }
@@ -522,11 +553,13 @@ int main(void) {
             }
           }
         }
+        grenades[i].speed *= grenades[i].friction;
         grenades[i].fuse_timer -= GetFrameTime();
         if (grenades[i].fuse_timer <= 0){
           if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
             p2.health -= grenades[i].damage;
           }
+          spawnExplosion(explosions, grenades[i].position, grenades[i].explosion_radius);
           grenades[i].active = false;
         }
       }
@@ -564,7 +597,17 @@ int main(void) {
         }
       }
     }
-    
+    // explosion update loop
+    for (int i = 0; i < EXPLOSION_COUNT; i++)
+    {
+      if(explosions[i].active == true){
+        explosions[i].timer -= GetFrameTime();
+        explosions[i].radius = explosions[i].max_radius * (1.0f - explosions[i].timer / explosions[i].duration);
+        if(explosions[i].timer <= 0){
+          explosions[i].active = false;
+        }
+      }
+    }
     // pickup effects
       for(int i = 0; i < pickup_count; i++){
         if(pickups[i].active == true){
@@ -616,6 +659,13 @@ int main(void) {
       for (int s = 0; s < SPARK_COUNT; s++){
         if(sparks[s].active == true){
           DrawCircleV(sparks[s].position, 3, ORANGE);
+        }
+      }
+      // draws explosions
+      for(int i = 0; i < EXPLOSION_COUNT; i++){
+        if(explosions[i].active == true){
+          float alpha = explosions[i].timer / explosions[i].duration;
+          DrawCircleV(explosions[i].position, explosions[i].radius, ColorAlpha(ORANGE, alpha));
         }
       }
       // draws pickups
