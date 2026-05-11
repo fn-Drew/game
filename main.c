@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define PICKUP_COUNT 20
 #define PLAYER_ACCELERATION 2500
 #define SPARK_COUNT 100
 #define PROJECTILE_COUNT 100
@@ -47,6 +48,21 @@ typedef struct{
   float attack_duration;
 } Weapon;
 
+typedef enum {
+  PICKUP_WEAPON,
+  PICKUP_HEALTH,
+  PICKUP_AMMO,
+  PICKUP_ARMOR
+} PickupType;
+
+typedef struct {
+  PickupType type;
+  Vector2 position;
+  bool active;
+  WeaponType weapon;
+  int value;
+} Pickup;
+
 typedef enum {W, A, S, D} PlayerKey;
 
 typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
@@ -82,6 +98,7 @@ typedef struct {
   int active_weapon;
   float reload_timer;
   bool is_reloading;
+  int armor;
 } Player;
 
 typedef struct {
@@ -111,15 +128,19 @@ Spark sparks[SPARK_COUNT] = {
   0
 };
 
+Pickup pickups[PICKUP_COUNT] = {
+  0
+};
+
 Weapon weapon_list[] = {
   {.type = P90, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
   {.type = AK47, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
-  {.type = M4A1, .damage = 26, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
+  {.type = M4A1, .damage = 32, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
   {.type = DESERT_EAGLE, .damage = 51, .cooldown = 0.21f, .accuracy = 0.95f, .magazine_size = 7, .current_ammo = 7, .reload_time = 1.5f},
-  {.type = BARRETT_50CAL, .damage = 100, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
+  {.type = BARRETT_50CAL, .damage = 150, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
   {.type = KNIFE, .damage = 34, .cooldown = 0.1f, .range = 25.0f, .swing_arc = 15.0f, .attack_duration = 0.1f},
   {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
-  {.type = HAMMER, .damage = 100, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
+  {.type = HAMMER, .damage = 150, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
   {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 3.0f, .throw_speed = 500},
   {.type = SPEAR, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
   {.type = LAND_MINE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 0.1f},
@@ -130,6 +151,7 @@ void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
   player->health = 100;
+  player->armor = 0;
   player->fire_timer = 0.0f;
   player->weapons[0] = weapon_list[P90];
   player->weapons[1] = weapon_list[KNIFE];
@@ -244,15 +266,56 @@ int main(void) {
   }
   // generates the map from the file
   int char_count = 0;
+  int pickup_count = 0;
   for(int rows = 0; rows < ROW_COUNT; rows++){
     for(int columns = 0; columns < COLUMN_COUNT; columns++){
-      // adds rectangle to walls array if character is a 1
+      // adds things to map arrays based on map file 1 = walls, 2 = weapon, etc.
       char map_char = fgetc(map);
         if(map_char == '1'){ 
           walls[char_count] = (Rectangle){
             columns * TILE_WIDTH, rows * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT}; 
           char_count++; 
-      }
+        }
+        else if(map_char == '2'){
+          pickups[pickup_count].type = PICKUP_WEAPON;
+          pickups[pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[pickup_count].weapon = (WeaponType)GetRandomValue(0, 10);
+          pickups[pickup_count].active = true;
+          pickup_count++;
+        }
+        else if(map_char == '3'){
+          pickups[pickup_count].type = PICKUP_HEALTH;
+          pickups[pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[pickup_count].value = 50;
+          pickups[pickup_count].active = true;
+          pickup_count++;
+        }
+        else if(map_char == '4'){
+          pickups[pickup_count].type = PICKUP_AMMO;
+          pickups[pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[pickup_count].value = 50;
+          pickups[pickup_count].active = true;
+          pickup_count++;
+        }
+        else if(map_char == '5'){
+           pickups[pickup_count].type = PICKUP_ARMOR;
+            pickups[pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[pickup_count].value = 100;
+          pickups[pickup_count].active = true;
+          pickup_count++;
+        }
     }
     fgetc(map); // consume newline character
   }
@@ -373,6 +436,39 @@ int main(void) {
       for (int s = 0; s < SPARK_COUNT; s++){
         if(sparks[s].active == true){
           DrawCircleV(sparks[s].position, 3, ORANGE);
+        }
+      }
+      // draws pickups
+      for(int i = 0; i < pickup_count; i++){
+        if(pickups[i].active == true){
+          Color pickup_color;
+          if(pickups[i].type == PICKUP_WEAPON) pickup_color = BLUE;
+          else if(pickups[i].type == PICKUP_HEALTH) pickup_color = GREEN;
+          else if(pickups[i].type == PICKUP_AMMO) pickup_color = YELLOW;
+          else if(pickups[i].type == PICKUP_ARMOR) pickup_color = GRAY;
+          DrawCircleV(pickups[i].position, 10, pickup_color);
+        }
+      }
+      // pickup effects
+      for(int i = 0; i < pickup_count; i++){
+        if(pickups[i].active == true){
+          if(CheckCollisionCircles(p1.position, p1.radius, pickups[i].position, 10)){
+            if(pickups[i].type == PICKUP_HEALTH){
+              p1.health += pickups[i].value;
+                if(p1.health > 100) {
+                  p1.health = 100;}
+            }
+            else if(pickups[i].type == PICKUP_WEAPON){
+              p1.weapons[p1.active_weapon] = weapon_list[pickups[i].weapon];
+            }
+            else if(pickups[i].type == PICKUP_AMMO){
+              p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
+            }
+            else if(pickups[i].type == PICKUP_ARMOR){
+              p1.armor +=pickups[i].value;
+            }
+            pickups[i].active = false;
+          }
         }
       }
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
