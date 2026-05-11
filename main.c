@@ -176,7 +176,7 @@ Weapon weapon_list[] = {
   {.type = KNIFE, .damage = 34, .cooldown = 0.1f, .range = 25.0f, .swing_arc = 15.0f, .attack_duration = 0.1f},
   {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
   {.type = HAMMER, .damage = 150, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
-  {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 3.0f, .throw_speed = 500},
+  {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 500},
   {.type = SPEAR, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
   {.type = LAND_MINE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 0.1f},
 };
@@ -384,6 +384,8 @@ int main(void) {
   Sound impact = LoadSound("impact.wav");
   Sound knife_slash = LoadSound("knife_slash.wav");
   Sound pinpull = LoadSound("pinpull.wav");
+  Sound explode = LoadSound("explode.wav");
+  Sound he_bounce = LoadSound("he_bounce.wav");
 
   SetTargetFPS(60);
   initializePlayer(&p1);
@@ -550,6 +552,7 @@ int main(void) {
           for(int wall = 0; wall < char_count; wall++){
             if(CheckCollisionCircleRec(grenades[i].position, 5.0f, walls[wall])){
               bounceGrenade(&grenades[i], walls[wall]);
+              PlaySound(he_bounce);
             }
           }
         }
@@ -560,6 +563,7 @@ int main(void) {
             p2.health -= grenades[i].damage;
           }
           spawnExplosion(explosions, grenades[i].position, grenades[i].explosion_radius);
+          PlaySound(explode);
           grenades[i].active = false;
         }
       }
@@ -707,6 +711,10 @@ int main(void) {
   }
   UnloadSound(gunshot);
   UnloadSound(impact);
+  UnloadSound(knife_slash);
+  UnloadSound(pinpull);
+  UnloadSound(he_bounce);
+  UnloadSound(explode);
   CloseAudioDevice();
   CloseWindow();
 
