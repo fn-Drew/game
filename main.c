@@ -5,6 +5,10 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #define EXPLOSION_COUNT 20
 #define GRENADE_COUNT 100
 #define PICKUP_COUNT 20
@@ -127,6 +131,8 @@ typedef struct {
   bool is_attacking;
   float attack_timer;
   float attack_angle;
+  float facing_angle;
+  float fov;
 } Player;
 
 typedef struct {
@@ -199,6 +205,8 @@ void initializePlayer(Player *player) {
   player->is_attacking = false;
   player->attack_timer = 0.0f;
   player->attack_angle = 0.0f;
+  player->facing_angle = 0.0f;
+  player->fov = 120.0f;
   for(int key = 0; key < KEY_COUNT; key++){
     // maps default keys and their axis + direction onto the new players keys
     player->keys[key].code = default_keys[key].code;
@@ -208,7 +216,7 @@ void initializePlayer(Player *player) {
   }
 }
 
-void updatePlayer(Player *player) {
+void updatePlayer(Player *player, Camera2D camera) {
   Vector2 direction = {0, 0};
   float *dir = (float *)&direction;
   // creates a new pointer to player->position as a float
@@ -233,6 +241,24 @@ void updatePlayer(Player *player) {
   // moves player with velocity
   pos[0] += player->velocity.x * GetFrameTime();
   pos[1] += player->velocity.y * GetFrameTime();
+  // debug
+  if(isnan(pos[0]) || isnan(pos[1])){ 
+    pos[0] = (float)SCREEN_WIDTH/2.0f;
+    pos[1] = (float)SCREEN_HEIGHT/2.0f;
+    player->velocity = (Vector2){0, 0};
+  }
+  printf("pos: %.2f %.2f\n", player->position.x, player->position.y); // debug print 
+  // facing angle slowly follows mouse
+  Vector2 mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
+  float target_angle = atan2f(mouse_world.y - player->position.y, mouse_world.x - player->position.x);
+
+  // wrap angle difference to -PI to PI
+  float angle_diff = target_angle - player->facing_angle;
+  while(angle_diff > M_PI) angle_diff -= 2 * M_PI;
+  while(angle_diff < -M_PI) angle_diff += 2 * M_PI;
+
+  float turn_speed = 3.0f;
+  player->facing_angle += angle_diff * turn_speed * GetFrameTime();
 }
 
 void resolveCollision(Player *player, Rectangle rec){
@@ -469,7 +495,7 @@ int main(void) {
     // Update variables here:
     Vector2 current_position = p1.position;
 
-    updatePlayer(&p1);
+    updatePlayer(&p1, camera);
     
     // weapon switch
     if(IsKeyPressed(KEY_Q)){
@@ -667,8 +693,8 @@ int main(void) {
     camera.target = p1.position; // updates camera each frame before draw
 
     BeginDrawing();
-      BeginMode2D(camera);
       ClearBackground(LIGHTGRAY);
+      BeginMode2D(camera);
       DrawCircleV(p1.position, 5, RED);
       DrawCircleV(p2.position, 5, BLUE);
       
@@ -721,6 +747,18 @@ int main(void) {
           DrawCircleV(grenades[i].position, 5, DARKGREEN);
         }
       }
+      // draws vision cone
+      float cone_start = (p1.facing_angle * RAD2DEG) - (p1.fov / 2);
+      float cone_end = (p1.facing_angle * RAD2DEG) + (p1.fov / 2);
+
+      DrawCircleSector(
+      p1.position,
+      600.0f,
+      cone_start,
+      cone_end,
+      32,
+      ColorAlpha(WHITE, 0.15f)
+      );
       EndMode2D();
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
