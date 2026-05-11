@@ -309,6 +309,8 @@ void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
           GetMousePosition(), player->position)
         ));
       float spread = (1.0f - weapon.accuracy) * 10.0f;
+      float speed = Vector2Length(player->velocity);
+      spread += speed * 0.03f;
       float offset = (float)GetRandomValue((int)-spread, (int)spread);
       projectiles[proj].direction = Vector2Rotate(projectiles[proj].direction, offset * DEG2RAD);
       projectiles[proj].speed = 2000;
