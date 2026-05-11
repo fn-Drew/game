@@ -30,7 +30,8 @@ typedef enum {
   SWORD,
   HAMMER,
   GRENADE,
-  SPEAR,
+  THROWING_KNIFE,
+  SMOKE_GRENADE,
   LAND_MINE
 } WeaponType;
 
@@ -60,6 +61,7 @@ typedef struct{
   float explosion_radius;
   float friction;
   Vector2 prev_position;
+  WeaponType type;
 } Grenade;
 
 typedef struct{
@@ -177,8 +179,9 @@ Weapon weapon_list[] = {
   {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
   {.type = HAMMER, .damage = 150, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
   {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 500},
-  {.type = SPEAR, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
+  {.type = THROWING_KNIFE, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
   {.type = LAND_MINE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 0.1f},
+  {.type = SMOKE_GRENADE, .damage = 0, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 300}
 };
 
 // functions
@@ -278,6 +281,7 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
   for (int i = 0; i < GRENADE_COUNT; i++){
     if (grenades[i].active == false)
     {
+    grenades[i].type = weapon.type;
     grenades[i].position = player->position;
     grenades[i].direction = (Vector2Normalize(
         Vector2Subtract(
@@ -347,7 +351,7 @@ bool isMeleeWeapon(WeaponType type){
   return type == KNIFE || type == SWORD || type == HAMMER;
 }
 bool isThrowableWeapon(WeaponType type){
-  return type == GRENADE || type == SPEAR || type == LAND_MINE;
+  return type == GRENADE || type == THROWING_KNIFE || type == SMOKE_GRENADE || type == LAND_MINE;
 }
 // line rec helper for grenade wall collision
 bool checkCollisionLineRec(Grenade *grenades, Rectangle rec){
@@ -545,20 +549,30 @@ int main(void) {
     {
       if(grenades[i].active == true){
         int steps = 5;
-        for(int step = 0; step < steps; step++){
+        for(int step = 0; step < steps; step++){ 
           grenades[i].prev_position = grenades[i].position;
           grenades[i].position = Vector2Add(grenades[i].position, 
-            Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime() / steps));
+            Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime() / steps)); // substep movement, moves 5 times per frame
           for(int wall = 0; wall < char_count; wall++){
             if(CheckCollisionCircleRec(grenades[i].position, 5.0f, walls[wall])){
+              if(grenades[i].type == THROWING_KNIFE){
+              grenades[i].active = false;
+              } else {
               bounceGrenade(&grenades[i], walls[wall]);
               PlaySound(he_bounce);
+              }
             }
           }
         }
         grenades[i].speed *= grenades[i].friction;
         grenades[i].fuse_timer -= GetFrameTime();
-        if (grenades[i].fuse_timer <= 0){
+        if(grenades[i].type == THROWING_KNIFE){
+          if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, 5.0f)){
+            p2.health -= grenades[i].damage;
+            grenades[i].active = false;
+          }
+        }
+        if (grenades[i].fuse_timer <= 0 && grenades[i].type != THROWING_KNIFE){
           if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
             p2.health -= grenades[i].damage;
           }
