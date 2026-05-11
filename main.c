@@ -5,6 +5,7 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define GRENADE_COUNT 100
 #define PICKUP_COUNT 20
 #define PLAYER_ACCELERATION 2500
 #define SPARK_COUNT 100
@@ -47,6 +48,18 @@ typedef struct{
   float swing_arc;
   float attack_duration;
 } Weapon;
+
+typedef struct{
+  Vector2 position;
+  Vector2 direction;
+  float speed;
+  float fuse_timer;
+  bool active;
+  int damage;
+  float explosion_radius;
+  float friction;
+  Vector2 prev_position;
+} Grenade;
 
 typedef enum {
   PICKUP_WEAPON,
@@ -136,6 +149,10 @@ Pickup pickups[PICKUP_COUNT] = {
   0
 };
 
+Grenade grenades[GRENADE_COUNT] = {
+
+};
+
 Weapon weapon_list[] = {
   {.type = P90, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
   {.type = AK47, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
@@ -157,8 +174,8 @@ void initializePlayer(Player *player) {
   player->health = 100;
   player->armor = 0;
   player->fire_timer = 0.0f;
-  player->weapons[0] = weapon_list[P90];
-  player->weapons[1] = weapon_list[KNIFE];
+  player->weapons[0] = weapon_list[AK47];
+  player->weapons[1] = weapon_list[GRENADE];
   player->active_weapon = 0;
   player->reload_timer = 0.0f;
   player->is_reloading = false;
@@ -218,6 +235,49 @@ else if(min_overlap == bottom_overlap)
     player->position.y = rec.y - player->radius;
 }
 
+void bounceGrenade(Grenade *grenades, Rectangle rec){
+  float left_overlap = (rec.x + rec.width) - (grenades->position.x - 5.0f);
+  float right_overlap = (grenades->position.x + 5.0f) - (rec.x);
+  float top_overlap = (rec.y + rec.height) - (grenades->position.y - 5.0f);
+  float bottom_overlap = (grenades->position.y + 5.0f) - (rec.y);
+  // bounces grenade
+  float min_overlap = fminf(fminf(left_overlap, right_overlap), fminf(top_overlap, bottom_overlap));
+  if(min_overlap == left_overlap){
+    grenades->direction.x *= -1;
+    grenades->position.x = rec.x + rec.width + 5.0f;
+  }
+  else if(min_overlap == right_overlap){
+    grenades->direction.x *= -1;
+    grenades->position.x = rec.x - 5.0f;
+  }
+  else if(min_overlap == top_overlap){
+    grenades->direction.y *= -1;
+    grenades->position.y = rec.y + rec.height + 5.0f;
+  }
+  else if(min_overlap == bottom_overlap){
+    grenades->direction.y *= -1;
+    grenades->position.y = rec.y - 5.0f;
+  }
+}
+
+void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon){
+  for (int i = 0; i < GRENADE_COUNT; i++){
+    if (grenades[i].active == false)
+    {
+    grenades[i].position = player->position;
+    grenades[i].direction = (Vector2Normalize(
+        Vector2Subtract(
+          GetMousePosition(), player->position)
+        ));
+    grenades[i].speed = weapon.throw_speed;
+    grenades[i].fuse_timer = weapon.fuse_time;
+    grenades[i].damage = weapon.damage;
+    grenades[i].explosion_radius = weapon.explosion_radius;
+    grenades[i].active = true;
+    break;
+    }
+  }
+}
 void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
   for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
   {
@@ -255,6 +315,9 @@ void spawnSpark(Spark *sparks, Vector2 position){
 bool isMeleeWeapon(WeaponType type){
   return type == KNIFE || type == SWORD || type == HAMMER;
 }
+bool isThrowableWeapon(WeaponType type){
+  return type == GRENADE || type == SPEAR || type == LAND_MINE;
+}
 
 int main(void) {
   Player p1;
@@ -265,6 +328,8 @@ int main(void) {
   InitAudioDevice();
   Sound gunshot = LoadSound("gunshot.wav");
   Sound impact = LoadSound("impact.wav");
+  Sound knife_slash = LoadSound("knife_slash.wav");
+  Sound pinpull = LoadSound("pinpull.wav");
 
   SetTargetFPS(60);
   initializePlayer(&p1);
@@ -352,9 +417,17 @@ int main(void) {
           float aim_angle = atan2f(to_mouse.y, to_mouse.x);
           p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
           p1.is_attacking = true;
+          PlaySound(knife_slash);
           p1.fire_timer = 0.0f;
         }
       } 
+      else if(isThrowableWeapon(p1.weapons[p1.active_weapon].type)){
+        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
+          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon]);
+          PlaySound(pinpull);
+          p1.fire_timer = 0.0f;
+        }
+      }
       else {
         if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
           && p1.weapons[p1.active_weapon].current_ammo > 0
@@ -411,6 +484,27 @@ int main(void) {
         }
       }
     }
+    // grenade update loop
+    for (int i = 0; i < GRENADE_COUNT; i++)
+    {
+      if(grenades[i].active == true){
+        grenades[i].prev_position = grenades[i].position;
+        grenades[i].position = Vector2Add(grenades[i].position, 
+          Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime())); // position update
+          for(int wall = 0; wall < char_count; wall++)
+            if(CheckCollisionCircleRec(grenades[i].position, 5.0f, walls[wall])){
+              bounceGrenade(&grenades[i], walls[wall]);
+            }
+        grenades[i].fuse_timer -= GetFrameTime();
+        if (grenades[i].fuse_timer <= 0){
+          if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
+            p2.health -= grenades[i].damage; // damage
+          }
+          grenades[i].active = false;
+        }
+      }
+    }
+    
     // projectile wall collision check loop
     for (int wall = 0; wall < char_count; wall++)
     {
@@ -515,6 +609,12 @@ int main(void) {
         p1.position.y + sinf(p1.attack_angle) * p1.weapons[p1.active_weapon].range
         };
         DrawLineEx(p1.position, weapon_tip, 3.0f, DARKGRAY);
+      }
+      // draws grenades
+      for(int i = 0; i < GRENADE_COUNT; i++){
+        if(grenades[i].active == true){
+          DrawCircleV(grenades[i].position, 5, DARKGREEN);
+        }
       }
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
