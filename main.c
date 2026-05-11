@@ -9,6 +9,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define SMOKE_COUNT 10
 #define EXPLOSION_COUNT 20
 #define GRENADE_COUNT 100
 #define PICKUP_COUNT 20
@@ -35,8 +36,8 @@ typedef enum {
   HAMMER,
   GRENADE,
   THROWING_KNIFE,
-  SMOKE_GRENADE,
-  LAND_MINE
+  LAND_MINE,
+  SMOKE_GRENADE
 } WeaponType;
 
 typedef struct{
@@ -76,6 +77,15 @@ float timer;
 float duration;
 bool active;
 } Explosion;
+
+typedef struct{
+  Vector2 position;
+  float radius;
+  float max_radius;
+  float timer;
+  float duration;
+  bool active;
+} Smoke;
 
 typedef enum {
   PICKUP_WEAPON,
@@ -175,12 +185,16 @@ Explosion explosions[EXPLOSION_COUNT] = {
   0
 };
 
+Smoke smokes[SMOKE_COUNT] = {
+  0
+};
+
 Weapon weapon_list[] = {
   {.type = P90, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
   {.type = AK47, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
-  {.type = M4A1, .damage = 32, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
   {.type = DESERT_EAGLE, .damage = 51, .cooldown = 0.21f, .accuracy = 0.95f, .magazine_size = 7, .current_ammo = 7, .reload_time = 1.5f},
   {.type = BARRETT_50CAL, .damage = 150, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
+  {.type = M4A1, .damage = 32, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
   {.type = KNIFE, .damage = 34, .cooldown = 0.1f, .range = 25.0f, .swing_arc = 15.0f, .attack_duration = 0.1f},
   {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
   {.type = HAMMER, .damage = 150, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
@@ -197,8 +211,8 @@ void initializePlayer(Player *player) {
   player->health = 100;
   player->armor = 0;
   player->fire_timer = 0.0f;
-  player->weapons[0] = weapon_list[AK47];
-  player->weapons[1] = weapon_list[GRENADE];
+  player->weapons[0] = weapon_list[M4A1];
+  player->weapons[1] = weapon_list[SMOKE_GRENADE];
   player->active_weapon = 0;
   player->reload_timer = 0.0f;
   player->is_reloading = false;
@@ -323,6 +337,23 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon, Camera2D cam
     }
   }
 }
+
+void spawnSmoke(Smoke *smokes, Vector2 position, float max_radius){
+  for (int i = 0; i < SMOKE_COUNT; i++)
+  {
+    if (smokes[i].active == false)
+    {
+      smokes[i].position = position;
+      smokes[i].radius = 0;
+      smokes[i].max_radius = max_radius;
+      smokes[i].duration = 12.0f;
+      smokes[i].timer = 12.0f;
+      smokes[i].active = true;
+      break;
+    }
+  }
+}
+
 void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon, Camera2D camera){
   for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
   {
@@ -600,23 +631,29 @@ int main(void) {
         }
         grenades[i].speed *= grenades[i].friction;
         grenades[i].fuse_timer -= GetFrameTime();
+
         if(grenades[i].type == THROWING_KNIFE){
           if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, 5.0f)){
             p2.health -= grenades[i].damage;
             grenades[i].active = false;
           }
         }
-        if (grenades[i].fuse_timer <= 0 && grenades[i].type != THROWING_KNIFE){
-          if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
-            p2.health -= grenades[i].damage;
+
+        if(grenades[i].fuse_timer <= 0 && grenades[i].type != THROWING_KNIFE){
+          if(grenades[i].type == SMOKE_GRENADE){
+            spawnSmoke(smokes, grenades[i].position, grenades[i].explosion_radius);
+          } 
+          else {
+              if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
+                p2.health -= grenades[i].damage;
+              }
+              spawnExplosion(explosions, grenades[i].position, grenades[i].explosion_radius);
+              PlaySound(explode);
           }
-          spawnExplosion(explosions, grenades[i].position, grenades[i].explosion_radius);
-          PlaySound(explode);
-          grenades[i].active = false;
+        grenades[i].active = false;
         }
       }
     }
-    
     // projectile wall collision check loop
     for (int wall = 0; wall < char_count; wall++)
     {
@@ -657,6 +694,19 @@ int main(void) {
         explosions[i].radius = explosions[i].max_radius * (1.0f - explosions[i].timer / explosions[i].duration);
         if(explosions[i].timer <= 0){
           explosions[i].active = false;
+        }
+      }
+    }
+    // smoke update loop
+    for (int i = 0; i < SMOKE_COUNT; i++)
+    {
+      if(smokes[i].active == true){
+        smokes[i].timer -= GetFrameTime();
+        if(smokes[i].radius < smokes[i].max_radius){
+          smokes[i].radius += smokes[i].max_radius * GetFrameTime();
+        }
+        if(smokes[i].timer <= 0){
+          smokes[i].active = false;
         }
       }
     }
@@ -719,7 +769,14 @@ int main(void) {
       for(int i = 0; i < EXPLOSION_COUNT; i++){
         if(explosions[i].active == true){
           float alpha = explosions[i].timer / explosions[i].duration;
-          DrawCircleV(explosions[i].position, explosions[i].radius, ColorAlpha(ORANGE, alpha));
+          DrawCircleV(explosions[i].position, explosions[i].radius, ColorAlpha(ORANGE, alpha * 0.8f));
+        }
+      }
+      // draws smoke
+      for(int i = 0; i < SMOKE_COUNT; i++){
+        if(smokes[i].active == true){
+          float alpha = smokes[i].timer / smokes[i].duration;
+          DrawCircleV(smokes[i].position, smokes[i].radius, ColorAlpha(GRAY, alpha));
         }
       }
       // draws pickups
