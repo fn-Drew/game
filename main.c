@@ -110,6 +110,7 @@ typedef struct {
   Vector2 direction;
   float speed;
   bool active;
+  int damage;
 } Projectile;
 
 typedef struct {
@@ -232,6 +233,7 @@ void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon){
       float offset = (float)GetRandomValue((int)-spread, (int)spread);
       projectiles[proj].direction = Vector2Rotate(projectiles[proj].direction, offset * DEG2RAD);
       projectiles[proj].speed = 2000;
+      projectiles[proj].damage = weapon.damage;
       projectiles[proj].active = true;
       break;
     }
@@ -427,7 +429,7 @@ int main(void) {
     for (int p = 0; p < PROJECTILE_COUNT; p++){
       if(projectiles[p].active == true &&
       CheckCollisionCircleLine(p2.position, p2.radius, projectiles[p].position, projectiles[p].prev_position) == true){
-        p2.health -= 20; // currently p2 only for testing
+        p2.health -= projectiles[p].damage; // currently p2 only for testing
         projectiles[p].active = false;
       }
     }
