@@ -37,7 +37,10 @@ typedef enum {
   GRENADE,
   THROWING_KNIFE,
   LAND_MINE,
-  SMOKE_GRENADE
+  SMOKE_GRENADE,
+  SPAS12,
+  MOSSBERG500,
+  SAWN_OFF
 } WeaponType;
 
 typedef struct{
@@ -54,6 +57,7 @@ typedef struct{
   float range;
   float swing_arc;
   float attack_duration;
+  int pellet_count;
 } Weapon;
 
 typedef struct{
@@ -190,18 +194,21 @@ Smoke smokes[SMOKE_COUNT] = {
 };
 
 Weapon weapon_list[] = {
-  {.type = P90, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
-  {.type = AK47, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
-  {.type = DESERT_EAGLE, .damage = 51, .cooldown = 0.21f, .accuracy = 0.95f, .magazine_size = 7, .current_ammo = 7, .reload_time = 1.5f},
-  {.type = BARRETT_50CAL, .damage = 150, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
-  {.type = M4A1, .damage = 32, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
+  {.type = P90, .pellet_count = 1, .damage = 15, .cooldown = 0.067f, .accuracy = 0.75f, .magazine_size = 50, .current_ammo = 50, .reload_time = 2.0f},
+  {.type = AK47, .pellet_count = 1, .damage = 34, .cooldown = 0.1f, .accuracy = 0.85f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
+  {.type = DESERT_EAGLE, .pellet_count = 1, .damage = 51, .cooldown = 0.21f, .accuracy = 0.95f, .magazine_size = 7, .current_ammo = 7, .reload_time = 1.5f},
+  {.type = BARRETT_50CAL, .pellet_count = 1, .damage = 150, .cooldown = 1.0f, .accuracy = 1.0f, .magazine_size = 10, .current_ammo = 10, .reload_time = 2.5f},
+  {.type = M4A1, .pellet_count = 1, .damage = 32, .cooldown = 0.085f, .accuracy = 0.95f, .magazine_size = 30, .current_ammo = 30, .reload_time = 1.5f},
   {.type = KNIFE, .damage = 34, .cooldown = 0.1f, .range = 25.0f, .swing_arc = 15.0f, .attack_duration = 0.1f},
   {.type = SWORD, .damage = 51, .cooldown = 0.25f, .range = 50.0f, .swing_arc = 90.0f, .attack_duration = 0.25f},
   {.type = HAMMER, .damage = 150, .cooldown = 0.5f, .range = 100.0f, .swing_arc = 180.0f, .attack_duration = 0.25f},
   {.type = GRENADE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 500},
   {.type = THROWING_KNIFE, .damage = 100, .cooldown = 2.0f, .throw_speed = 600},
   {.type = LAND_MINE, .damage = 100, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 0.1f},
-  {.type = SMOKE_GRENADE, .damage = 0, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 300}
+  {.type = SMOKE_GRENADE, .damage = 0, .cooldown = 2.0f, .explosion_radius = 100, .fuse_time = 2.0f, .throw_speed = 300},
+  {.type = SPAS12, .damage = 15, .pellet_count = 8, .cooldown = 0.25f, .accuracy = 0.5f, .current_ammo = 8, .magazine_size = 8, .reload_time = 2.2f},
+  {.type = MOSSBERG500, .damage = 20, .pellet_count = 7, .cooldown = 0.4f, .accuracy = 0.8f, .current_ammo = 7, .magazine_size = 7, .reload_time = 2.0f},
+  {.type = SAWN_OFF, .damage = 25, .pellet_count = 9, .cooldown = 0.2f, .accuracy = 0.3f, .current_ammo = 2,  .magazine_size = 2, .reload_time = 1.5f}
 };
 
 // functions
@@ -211,8 +218,8 @@ void initializePlayer(Player *player) {
   player->health = 100;
   player->armor = 0;
   player->fire_timer = 0.0f;
-  player->weapons[0] = weapon_list[M4A1];
-  player->weapons[1] = weapon_list[SMOKE_GRENADE];
+  player->weapons[0] = weapon_list[SPAS12];
+  player->weapons[1] = weapon_list[MOSSBERG500];
   player->active_weapon = 0;
   player->reload_timer = 0.0f;
   player->is_reloading = false;
@@ -355,25 +362,27 @@ void spawnSmoke(Smoke *smokes, Vector2 position, float max_radius){
 }
 
 void spawnProjectile(Projectile *projectiles, Player *player, Weapon weapon, Camera2D camera){
-  for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
-  {
-    if (projectiles[proj].active == false)
+  player->weapons[player->active_weapon].current_ammo--;
+  for (int pellet = 0; pellet < weapon.pellet_count; pellet++){
+    for (int proj = 0; proj < PROJECTILE_COUNT; proj++)
     {
-      player->weapons[player->active_weapon].current_ammo--;
-      projectiles[proj].position = player->position;
-      projectiles[proj].direction = (Vector2Normalize(
-        Vector2Subtract(
-          GetScreenToWorld2D(GetMousePosition(), camera), player->position)
-        ));
-      float spread = (1.0f - weapon.accuracy) * 10.0f;
-      float speed = Vector2Length(player->velocity);
-      spread += speed * 0.03f;
-      float offset = (float)GetRandomValue((int)-spread, (int)spread);
-      projectiles[proj].direction = Vector2Rotate(projectiles[proj].direction, offset * DEG2RAD);
-      projectiles[proj].speed = 2000;
-      projectiles[proj].damage = weapon.damage;
-      projectiles[proj].active = true;
-      break;
+      if (projectiles[proj].active == false)
+      {
+        projectiles[proj].position = player->position;
+        projectiles[proj].direction = (Vector2Normalize(
+          Vector2Subtract(
+            GetScreenToWorld2D(GetMousePosition(), camera), player->position)
+          ));
+        float spread = (1.0f - weapon.accuracy) * 10.0f;
+        float speed = Vector2Length(player->velocity);
+        spread += speed * 0.03f;
+        float offset = (float)GetRandomValue((int)-spread, (int)spread);
+        projectiles[proj].direction = Vector2Rotate(projectiles[proj].direction, offset * DEG2RAD);
+        projectiles[proj].speed = 2000;
+        projectiles[proj].damage = weapon.damage;
+        projectiles[proj].active = true;
+        break;
+      }
     }
   }
 }
