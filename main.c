@@ -415,6 +415,44 @@ void spawnExplosion(Explosion *explosions, Vector2 position, float max_radius){
   }
 }
 
+Vector2 castRay(Vector2 position, float ray_angle, float max_distance, Rectangle *walls, int wall_count){
+   // calculate the far end of the ray at max distance
+  Vector2 ray_end = {
+    position.x + cosf(ray_angle) * max_distance,
+    position.y + sinf(ray_angle) * max_distance
+  };
+  
+  // check each wall
+  for(int i = 0; i < wall_count; i++){
+    Vector2 hit = {0, 0};
+    Rectangle rec = walls[i];
+  
+    // check each edge separately so we always find the closest hit
+    if(CheckCollisionLines(position, ray_end, 
+        (Vector2){rec.x, rec.y}, (Vector2){rec.x + rec.width, rec.y}, &hit)){
+      if(Vector2Distance(position, hit) < Vector2Distance(position, ray_end))
+        ray_end = hit;
+    }
+    if(CheckCollisionLines(position, ray_end,
+        (Vector2){rec.x, rec.y + rec.height}, (Vector2){rec.x + rec.width, rec.y + rec.height}, &hit)){
+      if(Vector2Distance(position, hit) < Vector2Distance(position, ray_end))
+        ray_end = hit;
+    }
+    if(CheckCollisionLines(position, ray_end,
+        (Vector2){rec.x, rec.y}, (Vector2){rec.x, rec.y + rec.height}, &hit)){
+      if(Vector2Distance(position, hit) < Vector2Distance(position, ray_end))
+        ray_end = hit;
+    }
+    if(CheckCollisionLines(position, ray_end,
+        (Vector2){rec.x + rec.width, rec.y}, (Vector2){rec.x + rec.width, rec.y + rec.height}, &hit)){
+      if(Vector2Distance(position, hit) < Vector2Distance(position, ray_end))
+        ray_end = hit;
+    }
+  }
+  
+  return ray_end;
+}
+
 bool isMeleeWeapon(WeaponType type){
   return type == KNIFE || type == SWORD || type == HAMMER;
 }
@@ -443,6 +481,19 @@ bool checkCollisionLineRec(Grenade *grenades, Rectangle rec){
     return true;
   }
   return false;
+}
+bool hasLineOfSight(Vector2 from, Vector2 to, Rectangle *walls, int wall_count){
+  Vector2 hit = {0, 0};
+  for(int i = 0; i < wall_count; i++){
+    Rectangle rec = walls[i];
+    if(CheckCollisionLines(from, to, (Vector2){rec.x, rec.y}, (Vector2){rec.x + rec.width, rec.y}, &hit)
+    || CheckCollisionLines(from, to, (Vector2){rec.x, rec.y + rec.height}, (Vector2){rec.x + rec.width, rec.y + rec.height}, &hit)
+    || CheckCollisionLines(from, to, (Vector2){rec.x, rec.y}, (Vector2){rec.x, rec.y + rec.height}, &hit)
+    || CheckCollisionLines(from, to, (Vector2){rec.x + rec.width, rec.y}, (Vector2){rec.x + rec.width, rec.y + rec.height}, &hit)){
+      return false;
+    }
+  }
+  return true;
 }
 
 int main(void) {
@@ -758,14 +809,32 @@ int main(void) {
     float cone_end = (p1.facing_angle * RAD2DEG) + (p1.fov / 2);
     BeginTextureMode(vision_mask);
     ClearBackground((Color){0, 0, 0, 128});
-    DrawCircleSector(
-      (Vector2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f},
-      600.0f,
-      cone_start,
-      cone_end,
-      32,
-      WHITE
-    );
+
+    int ray_count = 180;
+    float half_fov = p1.fov / 2 * DEG2RAD;
+    Vector2 ray_endpoints[180];
+
+    for(int i = 0; i < ray_count; i++){
+      float ray_angle = (p1.facing_angle - half_fov) + (i * (p1.fov * DEG2RAD / (ray_count - 1)));
+      // cast ray in screen space — player is at center of screen
+      // but castRay works in world space so pass world positions and walls
+      ray_endpoints[i] = GetWorldToScreen2D(
+        castRay(p1.position, ray_angle, 600.0f, walls, char_count),
+        camera
+      );
+    }
+
+    Vector2 player_screen = GetWorldToScreen2D(p1.position, camera);
+
+    for(int i = 0; i < ray_count - 1; i++){
+      DrawTriangle(
+        player_screen,
+        ray_endpoints[i + 1],
+        ray_endpoints[i],
+        WHITE
+      );
+    }
+
     EndTextureMode();
 
     BeginDrawing();
@@ -779,11 +848,12 @@ int main(void) {
       while(angle_diff > M_PI) angle_diff -= 2 * M_PI;
       while(angle_diff < -M_PI) angle_diff += 2 * M_PI;
 
-      float half_fov = p1.fov / 2 * DEG2RAD;
       float fade_zone = 0.2f; // radians, tune this
       float visibility = 1.0f - ((fabsf(angle_diff) - (half_fov - fade_zone)) / fade_zone);
       visibility = fmaxf(0.0f, fminf(1.0f, visibility));
-
+      if(!hasLineOfSight(p1.position, p2.position, walls, char_count)){
+        visibility = 0.0f;
+      }
       DrawCircleV(p2.position, 5, ColorAlpha(BLUE, visibility));
 
       for(int wall = 0; wall < char_count; wall++){
