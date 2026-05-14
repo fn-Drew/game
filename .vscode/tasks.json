@@ -7,6 +7,7 @@
       "command": "gcc",
       "args": [
         "main.c",
+        "network.c",
         "-g",
         "-o",
         "main.exe",
@@ -15,7 +16,8 @@
         "-lraylib",
         "-lopengl32",
         "-lgdi32",
-        "-lwinmm"
+        "-lwinmm",
+        "-lws2_32"
       ],
       "group": {
         "kind": "build",

@@ -9,7 +9,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/main.exe",
-      "args": [],
+      "args": ["host", "3490", "3491"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
@@ -18,5 +18,9 @@
       "miDebuggerPath": "C:/raylib/w64devkit/bin/gdb.exe",
       "preLaunchTask": "build raylib"
     }
-  ]
+  ],
+  "group": {
+    "kind": "build",
+    "isDefault": true
+  }
 }

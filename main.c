@@ -4,7 +4,8 @@
 #include <math.h>
 #include <raylib.h>
 
-#define KEY_COUNT 4
+#include "network.h"
+
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
 
@@ -39,7 +40,7 @@ void initializePlayer(Player *player) {
   memcpy(player->keys, default_keys, sizeof(default_keys));
 }
 
-void updatePlayer(Player *player) {
+void updatePlayer(Player *player, GamePacket *packet) {
   // creates a new pointer to player->position as a float
   // for accessing player position with player->keys.axis in the loop
   float *pos = (float *)&player->position;
@@ -55,27 +56,68 @@ void updatePlayer(Player *player) {
       pos[k->axis] += k->direction * player->speed * GetFrameTime();
     }
   }
+  // memcpy(&packet->position, &player->position, sizeof(player->position));
+  packet->position = player->position;
 }
 
-int main(void) {
+void updatePeer(Player *player, GamePacket *packet){
+  float *pos = (float *)&player->position;
+  // memcpy(&player->position, &packet->position, sizeof(packet->position));
+  player->position = packet->position;
+}
+
+int main(int argc, char*argv[]) {
+  bool is_host = strcmp(argv[1], "host") == 0;
+  char *port_client = argv[2];
+  char *port_peer = argv[3];
+  printf("client port = %s\n", port_client);
+  printf("peer port   = %s\n", port_peer);
+
+  NetworkInit(port_client, port_peer);
+
+  GamePacket receive_packet;
+  GamePacket send_packet;
+
   Player p1;
+  Player p2;
+  Player *local_player;
+  Player *peer_player;
+
+  if (is_host){
+    local_player = &p1;
+    peer_player = &p2;
+  } else {
+    local_player = &p2;
+    peer_player = &p1;
+  }
 
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   SetTargetFPS(60);
-  initializePlayer(&p1);
+  initializePlayer(local_player);
+  initializePlayer(peer_player);
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
-    updatePlayer(&p1);
+    updatePlayer(local_player, &send_packet);
+
+
+    NetworkUpdate(&receive_packet, &send_packet);
+    // updateP2
+    // for (int key = 0; key < KEY_COUNT; key++){
+    //   p2.keys_pressed[key] = receive_packet.keys_pressed[key];
+    // }
+    updatePeer(peer_player, &receive_packet);
+    // memcpy(peer_player->keys_pressed, receive_packet.keys_pressed, sizeof(peer_player->keys_pressed));
 
     BeginDrawing();
 
       ClearBackground(RAYWHITE);
       // DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), p1.position.x + 20, p1.position.y + 20, 20, BLACK);
-      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
-      DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
+      DrawText(TextFormat("p1 Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
+      DrawText(TextFormat("p2 Pos: %.1f, %.1f", p2.position.x, p2.position.y), 20, 40, 20, BLACK);
       DrawCircleV(p1.position, 5, RED);
+      DrawCircleV(p2.position, 5, BLUE);
 
     EndDrawing();
   }
