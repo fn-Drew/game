@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -124,6 +125,7 @@ Key default_keys[KEY_COUNT] = {
   {'S', AXIS_Y,  1, ROW_COUNT * TILE_HEIGHT},
   {'D', AXIS_X,  1, COLUMN_COUNT * TILE_WIDTH},
 };
+
 Key default_keys_p2[KEY_COUNT] = {
   {KEY_UP, AXIS_Y, -1, 0},
   {KEY_LEFT, AXIS_X, -1, 0},
@@ -132,8 +134,6 @@ Key default_keys_p2[KEY_COUNT] = {
 };
 
 typedef struct {
-  Key keys[KEY_COUNT];
-  bool keys_pressed[KEY_COUNT];
   int radius;
   Vector2 position;
   Vector2 velocity;
@@ -213,7 +213,66 @@ Weapon weapon_list[] = {
   {.type = SAWN_OFF, .damage = 25, .pellet_count = 9, .cooldown = 0.2f, .accuracy = 0.3f, .current_ammo = 2,  .magazine_size = 2, .reload_time = 1.5f}
 };
 
-// functions
+uint32_t xorshift32(uint32_t* state){
+  uint32_t x = *state;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  *state = x;
+  return x;
+}
+
+// Everything the clients need to agree on (Deterministic)
+typedef struct {
+  Smoke smokes[SMOKE_COUNT];
+  Pickup pickups[PICKUP_COUNT];
+  Projectile projectiles[PROJECTILE_COUNT];
+  Rectangle walls[WALL_COUNT];
+  Grenade grenades[GRENADE_COUNT];
+  Player players[2];
+  int wall_count;
+  int pickup_count;
+  // Pseudo Random Seed that is shared acrossed systems
+  uint32_t seed;
+  // tick rate
+  int tick;
+} World;
+
+// Non-deterministic client-side effects
+typedef struct {
+  Explosion explosions[EXPLOSION_COUNT];
+  Spark sparks[SPARK_COUNT];
+  Camera2D camera;
+  RenderTexture2D vision_mask;
+} View;
+
+// Models, sounds, etc.
+typedef struct {
+  Sound gunshot ;
+  Sound impact;
+  Sound knife_slash;
+  Sound pinpull;
+  Sound explode;
+  Sound he_bounce;
+} Assets;
+// Keys pressed, mouse position
+
+typedef struct {
+  Key keys[KEY_COUNT];
+  bool keys_pressed[KEY_COUNT];
+  Vector2 mouse_world;
+} PlayerInput;
+
+void initInputs(PlayerInput *input){
+  for(int key = 0; key < KEY_COUNT; key++){
+    // maps default keys and their axis + direction onto the new players keys
+    input->keys[key].code = default_keys[key].code;
+    input->keys[key].axis = default_keys[key].axis;
+    input->keys[key].direction = default_keys[key].direction;
+    input->keys[key].boundary = default_keys[key].boundary;
+  }
+}
+
 void initializePlayer(Player *player) {
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
@@ -230,16 +289,72 @@ void initializePlayer(Player *player) {
   player->attack_angle = 0.0f;
   player->facing_angle = 0.0f;
   player->fov = 120.0f;
-  for(int key = 0; key < KEY_COUNT; key++){
-    // maps default keys and their axis + direction onto the new players keys
-    player->keys[key].code = default_keys[key].code;
-    player->keys[key].axis = default_keys[key].axis;
-    player->keys[key].direction = default_keys[key].direction;
-    player->keys[key].boundary = default_keys[key].boundary;
+}
+
+int loadMap(World *w) {
+  // loads the map
+  FILE* map = fopen("map.txt", "r");
+  if (map == NULL) {
+    return 0;
+  }
+  // generates the map from the file
+  w->wall_count = 0;
+  w->pickup_count = 0;
+  for(int rows = 0; rows < ROW_COUNT; rows++){
+    for(int columns = 0; columns < COLUMN_COUNT; columns++){
+      // adds things to map arrays based on map file 1 = walls, 2 = weapon, etc.
+      char map_char = fgetc(map);
+        if(map_char == '1'){ 
+          walls[w->wall_count] = (Rectangle){
+            columns * TILE_WIDTH, rows * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT}; 
+          w->wall_count++; 
+        }
+        else if(map_char == '2'){
+          pickups[w->pickup_count].type = PICKUP_WEAPON;
+          pickups[w->pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[w->pickup_count].weapon = (WeaponType)GetRandomValue(0, 10);
+          pickups[w->pickup_count].active = true;
+          w->pickup_count++;
+        }
+        else if(map_char == '3'){
+          pickups[w->pickup_count].type = PICKUP_HEALTH;
+          pickups[w->pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[w->pickup_count].value = 50;
+          pickups[w->pickup_count].active = true;
+          w->pickup_count++;
+        }
+        else if(map_char == '4'){
+          pickups[w->pickup_count].type = PICKUP_AMMO;
+          pickups[w->pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + TILE_HEIGHT/2
+          };
+          pickups[w->pickup_count].value = 50;
+          pickups[w->pickup_count].active = true;
+          w->pickup_count++;
+        }
+        else if(map_char == '5'){
+           pickups[w->pickup_count].type = PICKUP_ARMOR;
+            pickups[w->pickup_count].position = (Vector2){
+            columns * TILE_WIDTH + TILE_WIDTH/2, 
+            rows * TILE_HEIGHT + 80/2
+          };
+          pickups[w->pickup_count].value = 100;
+          pickups[w->pickup_count].active = true;
+          w->pickup_count++;
+        }
+    }
+    fgetc(map); // consume newline character
   }
 }
 
-void updatePlayer(Player *player, Camera2D camera, GamePacket *packet) {
+void updatePlayer(Player *player, Camera2D camera, GamePacket *packet, PlayerInput *input) {
   Vector2 direction = {0, 0};
   float *dir = (float *)&direction;
   // creates a new pointer to player->position as a float
@@ -247,12 +362,12 @@ void updatePlayer(Player *player, Camera2D camera, GamePacket *packet) {
   float *pos = (float *)&player->position;
   for(int key = 0; key < KEY_COUNT; key++){
     // keep our player's key presses updated
-    player->keys_pressed[key] = IsKeyDown(player->keys[key].code);
+    input->keys_pressed[key] = IsKeyDown(input->keys[key].code);
     // temporary pointer for brevity
-    Key *k = &player->keys[key];
+    Key *k = &input->keys[key];
     // accesses player->position through pos[0] or pos[1] (x or y)
     // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
-    if(player->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
+    if(input->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
       dir[k->axis] += k->direction;
     }
   }
@@ -270,10 +385,10 @@ void updatePlayer(Player *player, Camera2D camera, GamePacket *packet) {
     pos[1] = (float)SCREEN_HEIGHT/2.0f;
     player->velocity = (Vector2){0, 0};
   }
-  printf("pos: %.2f %.2f\n", player->position.x, player->position.y); // debug print 
+  // printf("pos: %.2f %.2f\n", player->position.x, player->position.y); // debug print 
   // facing angle slowly follows mouse
-  Vector2 mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
-  float target_angle = atan2f(mouse_world.y - player->position.y, mouse_world.x - player->position.x);
+  input->mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
+  float target_angle = atan2f(input->mouse_world.y - player->position.y, input->mouse_world.x - player->position.x);
 
   // wrap angle difference to -PI to PI
   float angle_diff = target_angle - player->facing_angle;
@@ -456,6 +571,10 @@ bool checkCollisionLineRec(Grenade *grenades, Rectangle rec){
 
 int main(int argc, char*argv[]) {
   bool is_host = strcmp(argv[1], "host") == 0;
+
+  World world;
+  World *w = &world;
+
   char *port_client = argv[2];
   char *port_peer = argv[3];
   printf("client port = %s\n", port_client);
@@ -465,6 +584,8 @@ int main(int argc, char*argv[]) {
 
   GamePacket receive_packet;
   GamePacket send_packet;
+  PlayerInput local_input;
+  PlayerInput *input = &local_input;
 
   Player p1;
   Player p2;
@@ -492,68 +613,11 @@ int main(int argc, char*argv[]) {
     
   SetTargetFPS(60);
   initializePlayer(local_player);
+  initInputs(input);
   initializePlayer(peer_player);
 
-  // loads the map
-  FILE* map = fopen("map.txt", "r");
-  if (map == NULL) {
-    return 0;
-  }
-  // generates the map from the file
-  int char_count = 0;
-  int pickup_count = 0;
-  for(int rows = 0; rows < ROW_COUNT; rows++){
-    for(int columns = 0; columns < COLUMN_COUNT; columns++){
-      // adds things to map arrays based on map file 1 = walls, 2 = weapon, etc.
-      char map_char = fgetc(map);
-        if(map_char == '1'){ 
-          walls[char_count] = (Rectangle){
-            columns * TILE_WIDTH, rows * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT}; 
-          char_count++; 
-        }
-        else if(map_char == '2'){
-          pickups[pickup_count].type = PICKUP_WEAPON;
-          pickups[pickup_count].position = (Vector2){
-            columns * TILE_WIDTH + TILE_WIDTH/2, 
-            rows * TILE_HEIGHT + TILE_HEIGHT/2
-          };
-          pickups[pickup_count].weapon = (WeaponType)GetRandomValue(0, 10);
-          pickups[pickup_count].active = true;
-          pickup_count++;
-        }
-        else if(map_char == '3'){
-          pickups[pickup_count].type = PICKUP_HEALTH;
-          pickups[pickup_count].position = (Vector2){
-            columns * TILE_WIDTH + TILE_WIDTH/2, 
-            rows * TILE_HEIGHT + TILE_HEIGHT/2
-          };
-          pickups[pickup_count].value = 50;
-          pickups[pickup_count].active = true;
-          pickup_count++;
-        }
-        else if(map_char == '4'){
-          pickups[pickup_count].type = PICKUP_AMMO;
-          pickups[pickup_count].position = (Vector2){
-            columns * TILE_WIDTH + TILE_WIDTH/2, 
-            rows * TILE_HEIGHT + TILE_HEIGHT/2
-          };
-          pickups[pickup_count].value = 50;
-          pickups[pickup_count].active = true;
-          pickup_count++;
-        }
-        else if(map_char == '5'){
-           pickups[pickup_count].type = PICKUP_ARMOR;
-            pickups[pickup_count].position = (Vector2){
-            columns * TILE_WIDTH + TILE_WIDTH/2, 
-            rows * TILE_HEIGHT + 80/2
-          };
-          pickups[pickup_count].value = 100;
-          pickups[pickup_count].active = true;
-          pickup_count++;
-        }
-    }
-    fgetc(map); // consume newline character
-  }
+  //map
+  loadMap(w);
   
   // camera declaration
   Camera2D camera = {0};
@@ -567,7 +631,7 @@ int main(int argc, char*argv[]) {
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
-    updatePlayer(local_player, camera, &send_packet);
+    updatePlayer(local_player, camera, &send_packet, input);
     updatePeer(peer_player, &receive_packet);
     NetworkUpdate(&receive_packet, &send_packet);
 
@@ -577,35 +641,6 @@ int main(int argc, char*argv[]) {
     }
     p1.fire_timer += GetFrameTime();
 
-    //firing check
-    if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-      if(isMeleeWeapon(p1.weapons[p1.active_weapon].type)){
-        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          Vector2 to_mouse = Vector2Subtract(GetScreenToWorld2D(GetMousePosition(), camera), p1.position);
-          float aim_angle = atan2f(to_mouse.y, to_mouse.x);
-          p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
-          p1.is_attacking = true;
-          PlaySound(knife_slash);
-          p1.fire_timer = 0.0f;
-        }
-      } 
-      else if(isThrowableWeapon(p1.weapons[p1.active_weapon].type)){
-        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon], camera);
-          PlaySound(pinpull);
-          p1.fire_timer = 0.0f;
-        }
-      }
-      else {
-        if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
-          && p1.weapons[p1.active_weapon].current_ammo > 0
-          && !p1.is_reloading){
-            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon], camera);
-            PlaySound(gunshot);
-            p1.fire_timer = 0.0f;
-        }
-      }
-    }
     // melee swing update
     if(p1.is_attacking){
       Weapon *w = &p1.weapons[p1.active_weapon];
@@ -661,7 +696,7 @@ int main(int argc, char*argv[]) {
           grenades[i].prev_position = grenades[i].position;
           grenades[i].position = Vector2Add(grenades[i].position, 
             Vector2Scale(grenades[i].direction, grenades[i].speed * GetFrameTime() / steps)); // substep movement, moves 5 times per frame
-          for(int wall = 0; wall < char_count; wall++){
+          for(int wall = 0; wall < w->wall_count; wall++){
             if(CheckCollisionCircleRec(grenades[i].position, 5.0f, walls[wall])){
               if(grenades[i].type == THROWING_KNIFE){
               grenades[i].active = false;
@@ -698,7 +733,7 @@ int main(int argc, char*argv[]) {
       }
     }
     // projectile wall collision check loop
-    for (int wall = 0; wall < char_count; wall++)
+    for (int wall = 0; wall < w->wall_count; wall++)
     {
       for (int p = 0; p < PROJECTILE_COUNT; p++)
       {
@@ -754,7 +789,7 @@ int main(int argc, char*argv[]) {
       }
     }
     // pickup effects
-      for(int i = 0; i < pickup_count; i++){
+      for(int i = 0; i < w->wall_count; i++){
         if(pickups[i].active == true){
           if(CheckCollisionCircles(p1.position, p1.radius, pickups[i].position, 10)){
             if(pickups[i].type == PICKUP_HEALTH){
@@ -777,7 +812,7 @@ int main(int argc, char*argv[]) {
       }
 
     // moves player out of walls to previous position
-    for(int wall = 0; wall < char_count; wall++){
+    for(int wall = 0; wall < w->wall_count; wall++){
     if(CheckCollisionCircleRec(p1.position, p1.radius, walls[wall])){ 
       resolveCollision(&p1, walls[wall]); 
       }
@@ -819,7 +854,7 @@ int main(int argc, char*argv[]) {
 
       DrawCircleV(p2.position, 5, ColorAlpha(BLUE, visibility));
 
-      for(int wall = 0; wall < char_count; wall++){
+      for(int wall = 0; wall < w->wall_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
       };
       // draws projectiles with a tracer
@@ -851,7 +886,7 @@ int main(int argc, char*argv[]) {
         }
       }
       // draws pickups
-      for(int i = 0; i < pickup_count; i++){
+      for(int i = 0; i < w->pickup_count; i++){
         if(pickups[i].active == true){
           Color pickup_color;
           if(pickups[i].type == PICKUP_WEAPON) pickup_color = BLUE;
@@ -887,7 +922,7 @@ int main(int argc, char*argv[]) {
       EndBlendMode();
       
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
-      DrawText(TextFormat("W:", p1.keys_pressed[W]), -20, 20, 20, BLACK);
+      DrawText(TextFormat("W:", input->keys_pressed[W]), -20, 20, 20, BLACK);
       DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
       DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
       DrawText(TextFormat("Ammo: %d / %d", 
@@ -906,6 +941,7 @@ int main(int argc, char*argv[]) {
   UnloadSound(explode);
   UnloadRenderTexture(vision_mask);
   CloseAudioDevice();
+  NetworkShutdown();
   CloseWindow();
 
   return 0;
