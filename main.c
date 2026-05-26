@@ -126,12 +126,18 @@ Key default_keys[KEY_COUNT] = {
   {'D', AXIS_X,  1, COLUMN_COUNT * TILE_WIDTH},
 };
 
-Key default_keys_p2[KEY_COUNT] = {
-  {KEY_UP, AXIS_Y, -1, 0},
-  {KEY_LEFT, AXIS_X, -1, 0},
-  {KEY_DOWN, AXIS_Y,  1, SCREEN_HEIGHT},
-  {KEY_RIGHT, AXIS_X,  1, SCREEN_WIDTH},
-};
+// Key default_keys_p2[KEY_COUNT] = {
+//   {KEY_UP, AXIS_Y, -1, 0},
+//   {KEY_LEFT, AXIS_X, -1, 0},
+//   {KEY_DOWN, AXIS_Y,  1, SCREEN_HEIGHT},
+//   {KEY_RIGHT, AXIS_X,  1, SCREEN_WIDTH},
+// };
+
+typedef struct {
+  Key keys[KEY_COUNT];
+  bool keys_pressed[KEY_COUNT];
+  Vector2 mouse_world;
+} PlayerInput;
 
 typedef struct {
   int radius;
@@ -149,6 +155,7 @@ typedef struct {
   float attack_angle;
   float facing_angle;
   float fov;
+  PlayerInput input;
 } Player;
 
 typedef struct {
@@ -256,12 +263,6 @@ typedef struct {
   Sound he_bounce;
 } Assets;
 // Keys pressed, mouse position
-
-typedef struct {
-  Key keys[KEY_COUNT];
-  bool keys_pressed[KEY_COUNT];
-  Vector2 mouse_world;
-} PlayerInput;
 
 void initInputs(PlayerInput *input){
   for(int key = 0; key < KEY_COUNT; key++){
@@ -389,6 +390,11 @@ void updatePlayer(Player *player, Camera2D camera, GamePacket *packet, PlayerInp
   // facing angle slowly follows mouse
   input->mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
   float target_angle = atan2f(input->mouse_world.y - player->position.y, input->mouse_world.x - player->position.x);
+
+  if(IsKeyPressed(KEY_Q)){
+    player->active_weapon = (player->active_weapon == 0) ? 1 : 0;
+  }
+  player->fire_timer += GetFrameTime();
 
   // wrap angle difference to -PI to PI
   float angle_diff = target_angle - player->facing_angle;
@@ -582,10 +588,10 @@ int main(int argc, char*argv[]) {
 
   NetworkInit(port_client, port_peer);
 
+  PlayerInput inputs_player[2];
+
   GamePacket receive_packet;
   GamePacket send_packet;
-  PlayerInput local_input;
-  PlayerInput *input = &local_input;
 
   Player p1;
   Player p2;
@@ -613,7 +619,7 @@ int main(int argc, char*argv[]) {
     
   SetTargetFPS(60);
   initializePlayer(local_player);
-  initInputs(input);
+  initInputs(&inputs_player[0]);
   initializePlayer(peer_player);
 
   //map
@@ -631,15 +637,10 @@ int main(int argc, char*argv[]) {
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
-    updatePlayer(local_player, camera, &send_packet, input);
-    updatePeer(peer_player, &receive_packet);
+    updatePlayer(local_player, camera, &send_packet, &inputs_player[0]);
+    updatePlayer(peer_player, camera, &receive_packet, &inputs_player[1]);
+    // updatePeer(peer_player, &receive_packet);
     NetworkUpdate(&receive_packet, &send_packet);
-
-    // weapon switch
-    if(IsKeyPressed(KEY_Q)){
-      p1.active_weapon = (p1.active_weapon == 0) ? 1 : 0;
-    }
-    p1.fire_timer += GetFrameTime();
 
     // melee swing update
     if(p1.is_attacking){
@@ -922,7 +923,8 @@ int main(int argc, char*argv[]) {
       EndBlendMode();
       
       DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
-      DrawText(TextFormat("W:", input->keys_pressed[W]), -20, 20, 20, BLACK);
+      DrawText(TextFormat("W: %d", inputs_player[0].keys_pressed[0]), 20, 50, 20, BLACK);
+      DrawText(TextFormat("P2 W: %d", inputs_player[1].keys_pressed[0]), 60, 50, 20, BLACK);
       DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
       DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
       DrawText(TextFormat("Ammo: %d / %d", 
