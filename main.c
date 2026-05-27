@@ -219,7 +219,7 @@ void initializePlayer(Player *player) {
   player->armor = 0;
   player->fire_timer = 0.0f;
   player->weapons[0] = weapon_list[SPAS12];
-  player->weapons[1] = weapon_list[MOSSBERG500];
+  player->weapons[1] = weapon_list[GRENADE];
   player->active_weapon = 0;
   player->reload_timer = 0.0f;
   player->is_reloading = false;
@@ -237,7 +237,7 @@ void initializePlayer(Player *player) {
   }
 }
 
-void updatePlayer(Player *player, Camera2D camera) {
+void updatePlayer(Player *player, Camera2D camera, float delta) {
   Vector2 direction = {0, 0};
   float *dir = (float *)&direction;
   // creates a new pointer to player->position as a float
@@ -257,11 +257,11 @@ void updatePlayer(Player *player, Camera2D camera) {
   direction = Vector2Normalize(direction); // normalizes diagonal movement
   // gets velocity from direction and acceleration
   player->velocity = Vector2Add(player->velocity, Vector2Scale(
-    direction, PLAYER_ACCELERATION * GetFrameTime()));
+    direction, PLAYER_ACCELERATION * delta));
   player->velocity = Vector2Scale(player->velocity, 0.85f); // slows dowm movement with friction
   // moves player with velocity
-  pos[0] += player->velocity.x * GetFrameTime();
-  pos[1] += player->velocity.y * GetFrameTime();
+  pos[0] += player->velocity.x * delta;
+  pos[1] += player->velocity.y * delta;
   // debug
   if(isnan(pos[0]) || isnan(pos[1])){ 
     pos[0] = (float)SCREEN_WIDTH/2.0f;
@@ -585,10 +585,13 @@ int main(void) {
 
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
+    float delta = GetFrameTime();
+    if(delta > 0.05f) delta = 0.05f; // caps fps preventing teleporting due to lag spikes
+    
     // Update variables here:
     Vector2 current_position = p1.position;
 
-    updatePlayer(&p1, camera);
+    updatePlayer(&p1, camera, delta);
     
     // weapon switch
     if(IsKeyPressed(KEY_Q)){
