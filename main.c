@@ -12,6 +12,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define PLAYER_COUNT 2
 #define SMOKE_COUNT 10
 #define EXPLOSION_COUNT 20
 #define GRENADE_COUNT 100
@@ -24,7 +25,6 @@
 #define ROW_COUNT 20
 #define COLUMN_COUNT 20
 #define WALL_COUNT 400
-#define KEY_COUNT 4
 #define SCREEN_HEIGHT 800
 #define SCREEN_WIDTH 800
 
@@ -112,18 +112,14 @@ typedef struct {
 typedef enum {W, A, S, D} PlayerKey;
 
 typedef enum {AXIS_X = 0, AXIS_Y = 1} Axis;
-typedef struct {
-  int code;
-  int axis;
-  int direction;
-  int boundary;
-} Key;
 
 Key default_keys[KEY_COUNT] = {
   {'W', AXIS_Y, -1, 0},
   {'A', AXIS_X, -1, 0},
   {'S', AXIS_Y,  1, ROW_COUNT * TILE_HEIGHT},
   {'D', AXIS_X,  1, COLUMN_COUNT * TILE_WIDTH},
+  {'R', 0,  0, 0},
+  {'Q', 0,  0, 0},
 };
 
 // Key default_keys_p2[KEY_COUNT] = {
@@ -134,12 +130,8 @@ Key default_keys[KEY_COUNT] = {
 // };
 
 typedef struct {
-  Key keys[KEY_COUNT];
-  bool keys_pressed[KEY_COUNT];
-  Vector2 mouse_world;
-} PlayerInput;
-
-typedef struct {
+  // i.e, player #1
+  int number;
   int radius;
   Vector2 position;
   Vector2 velocity;
@@ -274,7 +266,10 @@ void initInputs(PlayerInput *input){
   }
 }
 
+int player_count = 0;
 void initializePlayer(Player *player) {
+  player->number = player_count;
+  player_count++;
   player->position = (Vector2){(float)SCREEN_WIDTH/2.0f, (float)SCREEN_HEIGHT/2.0f};
   player->radius = 5;
   player->health = 100;
@@ -388,11 +383,17 @@ void updatePlayer(Player *player, Camera2D camera, float delta, GamePacket *pack
     // keep our player's key presses updated
     input->keys_pressed[key] = IsKeyDown(input->keys[key].code);
     // temporary pointer for brevity
-    Key *k = &input->keys[key];
+    Key k = input->keys[key];
     // accesses player->position through pos[0] or pos[1] (x or y)
     // adds the appropriate direction (-1 or 1, up/right or down/left) to the axis
-    if(input->keys_pressed[key] && k->direction * (pos[k->axis]) + player->radius < (k->boundary)){
-      dir[k->axis] += k->direction;
+    if(input->keys_pressed[key] && k.direction * (pos[k.axis]) + player->radius < (k.boundary) && (k.code == 'W' || k.code == 'A' || k.code == 'S' || k.code == 'D')){
+      dir[k.axis] += k.direction;
+      packet->inputs_player[player->number].keys_pressed[key] = true;
+    }
+    if (input->keys_pressed[key] == 'R' && !player->is_reloading){
+      // reloading check
+      player->is_reloading = true;
+        player->reload_timer = player->weapons[player->active_weapon].reload_time;
     }
   }
   direction = Vector2Normalize(direction); // normalizes diagonal movement
@@ -411,13 +412,18 @@ void updatePlayer(Player *player, Camera2D camera, float delta, GamePacket *pack
   }
   // printf("pos: %.2f %.2f\n", player->position.x, player->position.y); // debug print 
   // facing angle slowly follows mouse
+
+  // advisor stated: logic such as this should be done in another function, with updatePlayer being reserved to setting up inputs and packets
+  // raw mouse information should be sent and recieved, turncap should be handled client sient; part of deterministic simulation
   input->mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
   float target_angle = atan2f(input->mouse_world.y - player->position.y, input->mouse_world.x - player->position.x);
+
+  packet->inputs_player[player->number].mouse_world = player->input.mouse_world;
 
   updateSwing(player, enemy);
 
   // if(player->keys_pressed[KEY_Q])
-  if(IsKeyPressed(KEY_Q)){
+  if(IsKeyPressed(input->keys_pressed[KEY_Q])){
     player->active_weapon = (player->active_weapon == 0) ? 1 : 0;
   }
 
@@ -430,7 +436,7 @@ void updatePlayer(Player *player, Camera2D camera, float delta, GamePacket *pack
 
   float turn_speed = 3.0f;
   player->facing_angle += angle_diff * turn_speed * GetFrameTime();
-  packet->position = player->position;
+
 }
 
 void resolveCollision(Player *player, Rectangle rec){
@@ -494,12 +500,6 @@ void spawnGrenade(Grenade *grenades, Player *player, Weapon weapon, Camera2D cam
     break;
     }
   }
-}
-
-void updatePeer(Player *player, GamePacket *packet){
-  float *pos = (float *)&player->position;
-  // memcpy(&player->position, &packet->position, sizeof(packet->position));
-  player->position = packet->position;
 }
 
 void spawnSmoke(Smoke *smokes, Vector2 position, float max_radius){
@@ -660,14 +660,7 @@ int main(int argc, char*argv[]) {
   World world;
   World *w = &world;
 
-  char *port_client = argv[2];
-  char *port_peer = argv[3];
-  printf("client port = %s\n", port_client);
-  printf("peer port   = %s\n", port_peer);
-
-  NetworkInit(port_client, port_peer);
-
-  PlayerInput inputs_player[2];
+  PlayerInput inputs_player[PLAYER_COUNT];
 
   GamePacket receive_packet;
   GamePacket send_packet;
@@ -685,6 +678,21 @@ int main(int argc, char*argv[]) {
     peer_player = &p1;
   }
 
+  char *port_client = argv[2];
+  char *port_peer = argv[3];
+
+  printf("client port = %s\n", port_client);
+  printf("peer port   = %s\n", port_peer);
+  SetTargetFPS(60);
+
+  initializePlayer(local_player);
+  initializePlayer(peer_player);
+
+  initInputs(&inputs_player[local_player->number]);
+  initInputs(&inputs_player[peer_player->number]);
+
+  NetworkInit(port_client, port_peer);
+
   InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "game window");
   // sound
   InitAudioDevice();
@@ -695,18 +703,12 @@ int main(int argc, char*argv[]) {
   Sound explode = LoadSound("explode.wav");
   Sound he_bounce = LoadSound("he_bounce.wav");
 
-    
-  SetTargetFPS(60);
-  initializePlayer(local_player);
-  initInputs(&inputs_player[0]);
-  initializePlayer(peer_player);
-
   //map
   loadMap(w);
   
   // camera declaration
   Camera2D camera = {0};
-  camera.target = p1.position;
+  camera.target = local_player->position;
   camera.offset = (Vector2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f};
   camera.rotation = 0.0f;
   camera.zoom = 1.0f;
@@ -719,53 +721,46 @@ int main(int argc, char*argv[]) {
     if(delta > 0.05f) delta = 0.05f; // caps fps preventing teleporting due to lag spikes
     
     // Update variables here:
-    updatePlayer(local_player, camera, delta, &send_packet, &inputs_player[0], peer_player);
-    updatePlayer(peer_player, camera, delta, &receive_packet, &inputs_player[1], local_player);
-    // updatePeer(peer_player, &receive_packet);
+    updatePlayer(local_player, camera, delta, &send_packet, &inputs_player[local_player->number], peer_player);
+    updatePlayer(peer_player, camera, delta, &receive_packet, &inputs_player[peer_player->number], local_player);
+
     NetworkUpdate(&receive_packet, &send_packet);
-
-
-    // reloading check
-    if(IsKeyPressed(KEY_R) && !p1.is_reloading){
-     p1.is_reloading = true;
-      p1.reload_timer = p1.weapons[p1.active_weapon].reload_time;
-    }
 
     //firing check
     if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-      if(isMeleeWeapon(p1.weapons[p1.active_weapon].type)){
-        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          Vector2 to_mouse = Vector2Subtract(GetScreenToWorld2D(GetMousePosition(), camera), p1.position);
+      if(isMeleeWeapon(local_player->weapons[local_player->active_weapon].type)){
+        if(local_player->fire_timer >= local_player->weapons[local_player->active_weapon].cooldown){
+          Vector2 to_mouse = Vector2Subtract(GetScreenToWorld2D(GetMousePosition(), camera), local_player->position);
           float aim_angle = atan2f(to_mouse.y, to_mouse.x);
-          p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
-          p1.is_attacking = true;
+          local_player->attack_angle = aim_angle - (local_player->weapons[local_player->active_weapon].swing_arc / 2 * DEG2RAD);
+          local_player->is_attacking = true;
           PlaySound(knife_slash);
-          p1.fire_timer = 0.0f;
+          local_player->fire_timer = 0.0f;
         }
       } 
-      else if(isThrowableWeapon(p1.weapons[p1.active_weapon].type)){
-        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
-          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon], camera);
+      else if(isThrowableWeapon(local_player->weapons[local_player->active_weapon].type)){
+        if(local_player->fire_timer >= local_player->weapons[local_player->active_weapon].cooldown){
+          spawnGrenade(grenades, &p1, local_player->weapons[local_player->active_weapon], camera);
           PlaySound(pinpull);
-          p1.fire_timer = 0.0f;
+          local_player->fire_timer = 0.0f;
         }
       }
       else {
-        if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
-          && p1.weapons[p1.active_weapon].current_ammo > 0
-          && !p1.is_reloading){
-            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon], camera);
+        if (local_player->fire_timer >= local_player->weapons[local_player->active_weapon].cooldown
+          && local_player->weapons[local_player->active_weapon].current_ammo > 0
+          && !local_player->is_reloading){
+            spawnProjectile(projectiles, &p1, local_player->weapons[local_player->active_weapon], camera);
             PlaySound(gunshot);
-            p1.fire_timer = 0.0f;
+            local_player->fire_timer = 0.0f;
         }
       }
     }
 
-    if(p1.is_reloading){
-    p1.reload_timer -= GetFrameTime();
-    if(p1.reload_timer <= 0){
-      p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
-      p1.is_reloading = false;
+    if(local_player->is_reloading){
+    local_player->reload_timer -= GetFrameTime();
+    if(local_player->reload_timer <= 0){
+      local_player->weapons[local_player->active_weapon].current_ammo = local_player->weapons[local_player->active_weapon].magazine_size;
+      local_player->is_reloading = false;
     }
   }
     //projectile update loop
@@ -807,8 +802,8 @@ int main(int argc, char*argv[]) {
         grenades[i].fuse_timer -= GetFrameTime();
 
         if(grenades[i].type == THROWING_KNIFE){
-          if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, 5.0f)){
-            p2.health -= grenades[i].damage;
+          if(CheckCollisionCircles(peer_player->position, peer_player->radius, grenades[i].position, 5.0f)){
+            peer_player->health -= grenades[i].damage;
             grenades[i].active = false;
           }
         }
@@ -818,8 +813,8 @@ int main(int argc, char*argv[]) {
             spawnSmoke(smokes, grenades[i].position, grenades[i].explosion_radius);
           } 
           else {
-              if(CheckCollisionCircles(p2.position, p2.radius, grenades[i].position, grenades[i].explosion_radius)){
-                p2.health -= grenades[i].damage;
+              if(CheckCollisionCircles(peer_player->position, peer_player->radius, grenades[i].position, grenades[i].explosion_radius)){
+                peer_player->health -= grenades[i].damage;
               }
               spawnExplosion(explosions, grenades[i].position, grenades[i].explosion_radius);
               PlaySound(explode);
@@ -845,8 +840,8 @@ int main(int argc, char*argv[]) {
     // projectile player collision check loop
     for (int p = 0; p < PROJECTILE_COUNT; p++){
       if(projectiles[p].active == true &&
-      CheckCollisionCircleLine(p2.position, p2.radius, projectiles[p].position, projectiles[p].prev_position) == true){
-        p2.health -= projectiles[p].damage; // currently p2 only for testing
+      CheckCollisionCircleLine(peer_player->position, peer_player->radius, projectiles[p].position, projectiles[p].prev_position) == true){
+        peer_player->health -= projectiles[p].damage; // currently p2 only for testing
         projectiles[p].active = false;
       }
     }
@@ -887,20 +882,20 @@ int main(int argc, char*argv[]) {
     // pickup effects
       for(int i = 0; i < w->wall_count; i++){
         if(pickups[i].active == true){
-          if(CheckCollisionCircles(p1.position, p1.radius, pickups[i].position, 10)){
+          if(CheckCollisionCircles(local_player->position, local_player->radius, pickups[i].position, 10)){
             if(pickups[i].type == PICKUP_HEALTH){
-              p1.health += pickups[i].value;
-                if(p1.health > 100) {
-                  p1.health = 100;}
+              local_player->health += pickups[i].value;
+                if(local_player->health > 100) {
+                  local_player->health = 100;}
             }
             else if(pickups[i].type == PICKUP_WEAPON){
-              p1.weapons[p1.active_weapon] = weapon_list[pickups[i].weapon];
+              local_player->weapons[local_player->active_weapon] = weapon_list[pickups[i].weapon];
             }
             else if(pickups[i].type == PICKUP_AMMO){
-              p1.weapons[p1.active_weapon].current_ammo = p1.weapons[p1.active_weapon].magazine_size;
+              local_player->weapons[local_player->active_weapon].current_ammo = local_player->weapons[local_player->active_weapon].magazine_size;
             }
             else if(pickups[i].type == PICKUP_ARMOR){
-              p1.armor +=pickups[i].value;
+              local_player->armor +=pickups[i].value;
             }
             pickups[i].active = false;
           }
@@ -909,34 +904,34 @@ int main(int argc, char*argv[]) {
 
     // moves player out of walls to previous position
     for(int wall = 0; wall < w->wall_count; wall++){
-    if(CheckCollisionCircleRec(p1.position, p1.radius, walls[wall])){ 
+    if(CheckCollisionCircleRec(local_player->position, local_player->radius, walls[wall])){ 
       resolveCollision(&p1, walls[wall]); 
       }
     }
 
-    camera.target = p1.position; // updates camera each frame before draw
+    camera.target = local_player->position; // updates camera each frame before draw
 
     // draw vision mask
-    float cone_start = (p1.facing_angle * RAD2DEG) - (p1.fov / 2);
-    float cone_end = (p1.facing_angle * RAD2DEG) + (p1.fov / 2);
+    float cone_start = (local_player->facing_angle * RAD2DEG) - (local_player->fov / 2);
+    float cone_end = (local_player->facing_angle * RAD2DEG) + (local_player->fov / 2);
     BeginTextureMode(vision_mask);
     ClearBackground((Color){0, 0, 0, 128});
 
     int ray_count = 180;
-    float half_fov = p1.fov / 2 * DEG2RAD;
+    float half_fov = local_player->fov / 2 * DEG2RAD;
     Vector2 ray_endpoints[180];
 
     for(int i = 0; i < ray_count; i++){
-      float ray_angle = (p1.facing_angle - half_fov) + (i * (p1.fov * DEG2RAD / (ray_count - 1)));
+      float ray_angle = (local_player->facing_angle - half_fov) + (i * (local_player->fov * DEG2RAD / (ray_count - 1)));
       // cast ray in screen space — player is at center of screen
       // but castRay works in world space so pass world positions and walls
       ray_endpoints[i] = GetWorldToScreen2D(
-        castRay(p1.position, ray_angle, 600.0f, walls, w->wall_count),
+        castRay(local_player->position, ray_angle, 600.0f, walls, w->wall_count),
         camera
       );
     }
 
-    Vector2 player_screen = GetWorldToScreen2D(p1.position, camera);
+    Vector2 player_screen = GetWorldToScreen2D(local_player->position, camera);
 
     for(int i = 0; i < ray_count - 1; i++){
       DrawTriangle(
@@ -952,22 +947,22 @@ int main(int argc, char*argv[]) {
     BeginDrawing();
       ClearBackground(LIGHTGRAY);
       BeginMode2D(camera);
-      DrawCircleV(p1.position, 5, RED);
-      DrawCircleV(p2.position, 5, BLUE);
+      DrawCircleV(local_player->position, 5, RED);
+      DrawCircleV(peer_player->position, 5, BLUE);
 
-      Vector2 to_p2 = Vector2Subtract(p2.position, p1.position);
-      float angle_to_p2 = atan2f(to_p2.y, to_p2.x);
-      float angle_diff = angle_to_p2 - p1.facing_angle;
+      Vector2 to_peer_player = Vector2Subtract(peer_player->position, local_player->position);
+      float angle_to_p2 = atan2f(to_peer_player.y, to_peer_player.x);
+      float angle_diff = angle_to_p2 - local_player->facing_angle;
       while(angle_diff > M_PI) angle_diff -= 2 * M_PI;
       while(angle_diff < -M_PI) angle_diff += 2 * M_PI;
 
       float fade_zone = 0.2f; // radians, tune this
       float visibility = 1.0f - ((fabsf(angle_diff) - (half_fov - fade_zone)) / fade_zone);
       visibility = fmaxf(0.0f, fminf(1.0f, visibility));
-      if(!hasLineOfSight(p1.position, p2.position, walls, w->wall_count)){
+      if(!hasLineOfSight(local_player->position, peer_player->position, walls, w->wall_count)){
         visibility = 0.0f;
       }
-      DrawCircleV(p2.position, 5, ColorAlpha(BLUE, visibility));
+      DrawCircleV(peer_player->position, 5, ColorAlpha(BLUE, visibility));
 
       for(int wall = 0; wall < w->wall_count; wall++){
         DrawRectangleRec(walls[wall], DARKGRAY);
@@ -1012,12 +1007,12 @@ int main(int argc, char*argv[]) {
         }
       }
       // draws melee swings
-      if(p1.is_attacking){
+      if(local_player->is_attacking){
         Vector2 weapon_tip = {
-        p1.position.x + cosf(p1.attack_angle) * p1.weapons[p1.active_weapon].range,
-        p1.position.y + sinf(p1.attack_angle) * p1.weapons[p1.active_weapon].range
+        local_player->position.x + cosf(local_player->attack_angle) * local_player->weapons[local_player->active_weapon].range,
+        local_player->position.y + sinf(local_player->attack_angle) * local_player->weapons[local_player->active_weapon].range
         };
-        DrawLineEx(p1.position, weapon_tip, 3.0f, DARKGRAY);
+        DrawLineEx(local_player->position, weapon_tip, 3.0f, DARKGRAY);
       }
       // draws grenades
       for(int i = 0; i < GRENADE_COUNT; i++){
@@ -1036,15 +1031,15 @@ int main(int argc, char*argv[]) {
        );
       EndBlendMode();
       
-      DrawText(TextFormat("Pos: %.1f, %.1f", p1.position.x, p1.position.y), 20, 20, 20, BLACK);
+      DrawText(TextFormat("Pos: %.1f, %.1f", local_player->position.x, local_player->position.y), 20, 20, 20, BLACK);
       DrawText(TextFormat("W: %d", inputs_player[0].keys_pressed[0]), 20, 50, 20, BLACK);
       DrawText(TextFormat("P2 W: %d", inputs_player[1].keys_pressed[0]), 60, 50, 20, BLACK);
-      DrawText(TextFormat("P2 Health: %d", p2.health), 90, 120, 20, RED);
-      DrawText(TextFormat("Weapon: %d", p1.active_weapon), 90, 260, 20, BLACK);
+      DrawText(TextFormat("P2 Health: %d", peer_player->health), 90, 120, 20, RED);
+      DrawText(TextFormat("Weapon: %d", local_player->active_weapon), 90, 260, 20, BLACK);
       DrawText(TextFormat("Ammo: %d / %d", 
-      p1.weapons[p1.active_weapon].current_ammo, 
-      p1.weapons[p1.active_weapon].magazine_size), 20, 80, 20, BLACK);
-      if(p1.is_reloading){
+      local_player->weapons[local_player->active_weapon].current_ammo, 
+      local_player->weapons[local_player->active_weapon].magazine_size), 20, 80, 20, BLACK);
+      if(local_player->is_reloading){
         DrawText("Reloading...", 20, 100, 20, RED);
       }
     EndDrawing();
