@@ -731,6 +731,36 @@ int main(int argc, char*argv[]) {
       p1.reload_timer = p1.weapons[p1.active_weapon].reload_time;
     }
 
+    //firing check
+    if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
+      if(isMeleeWeapon(p1.weapons[p1.active_weapon].type)){
+        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
+          Vector2 to_mouse = Vector2Subtract(GetScreenToWorld2D(GetMousePosition(), camera), p1.position);
+          float aim_angle = atan2f(to_mouse.y, to_mouse.x);
+          p1.attack_angle = aim_angle - (p1.weapons[p1.active_weapon].swing_arc / 2 * DEG2RAD);
+          p1.is_attacking = true;
+          PlaySound(knife_slash);
+          p1.fire_timer = 0.0f;
+        }
+      } 
+      else if(isThrowableWeapon(p1.weapons[p1.active_weapon].type)){
+        if(p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown){
+          spawnGrenade(grenades, &p1, p1.weapons[p1.active_weapon], camera);
+          PlaySound(pinpull);
+          p1.fire_timer = 0.0f;
+        }
+      }
+      else {
+        if (p1.fire_timer >= p1.weapons[p1.active_weapon].cooldown
+          && p1.weapons[p1.active_weapon].current_ammo > 0
+          && !p1.is_reloading){
+            spawnProjectile(projectiles, &p1, p1.weapons[p1.active_weapon], camera);
+            PlaySound(gunshot);
+            p1.fire_timer = 0.0f;
+        }
+      }
+    }
+
     if(p1.is_reloading){
     p1.reload_timer -= GetFrameTime();
     if(p1.reload_timer <= 0){
