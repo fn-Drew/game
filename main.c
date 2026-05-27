@@ -292,6 +292,29 @@ void initializePlayer(Player *player) {
   player->fov = 120.0f;
 }
 
+void updateSwing(Player *player, Player *enemy) {
+    // melee swing update
+    if(player->is_attacking){
+      Weapon *w = &player->weapons[player->active_weapon];
+      float swing_speed = (w->swing_arc * DEG2RAD) / w->attack_duration;
+      player->attack_angle += swing_speed * GetFrameTime();
+      player->attack_timer += GetFrameTime();
+      Vector2 weapon_tip = {
+        player->position.x + cosf(player->attack_angle) * player->weapons[player->active_weapon].range,
+        player->position.y + sinf(player->attack_angle) * player->weapons[player->active_weapon].range
+      };
+
+      if(CheckCollisionCircleLine(enemy->position, enemy->radius, player->position, weapon_tip)){
+        enemy->health -= player->weapons[player->active_weapon].damage;
+      }
+
+      if(player->attack_timer >= w->attack_duration){
+        player->is_attacking = false;
+        player->attack_timer = 0.0f;
+      }
+    }
+  };
+
 int loadMap(World *w) {
   // loads the map
   FILE* map = fopen("map.txt", "r");
@@ -355,7 +378,7 @@ int loadMap(World *w) {
   }
 }
 
-void updatePlayer(Player *player, Camera2D camera, GamePacket *packet, PlayerInput *input) {
+void updatePlayer(Player *player, Camera2D camera, GamePacket *packet, PlayerInput *input, Player *enemy) {
   Vector2 direction = {0, 0};
   float *dir = (float *)&direction;
   // creates a new pointer to player->position as a float
@@ -391,9 +414,13 @@ void updatePlayer(Player *player, Camera2D camera, GamePacket *packet, PlayerInp
   input->mouse_world = GetScreenToWorld2D(GetMousePosition(), camera);
   float target_angle = atan2f(input->mouse_world.y - player->position.y, input->mouse_world.x - player->position.x);
 
+  updateSwing(player, enemy);
+
+  // if(player->keys_pressed[KEY_Q])
   if(IsKeyPressed(KEY_Q)){
     player->active_weapon = (player->active_weapon == 0) ? 1 : 0;
   }
+
   player->fire_timer += GetFrameTime();
 
   // wrap angle difference to -PI to PI
@@ -637,29 +664,12 @@ int main(int argc, char*argv[]) {
   while(!WindowShouldClose()) // while the window shouldn't be closing (due to x, alt+f4, etc.)
   {
     // Update variables here:
-    updatePlayer(local_player, camera, &send_packet, &inputs_player[0]);
-    updatePlayer(peer_player, camera, &receive_packet, &inputs_player[1]);
+    updatePlayer(local_player, camera, &send_packet, &inputs_player[0], peer_player);
+    updatePlayer(peer_player, camera, &receive_packet, &inputs_player[1], local_player);
     // updatePeer(peer_player, &receive_packet);
     NetworkUpdate(&receive_packet, &send_packet);
 
-    // melee swing update
-    if(p1.is_attacking){
-      Weapon *w = &p1.weapons[p1.active_weapon];
-      float swing_speed = (w->swing_arc * DEG2RAD) / w->attack_duration;
-      p1.attack_angle += swing_speed * GetFrameTime();
-      p1.attack_timer += GetFrameTime();
-      Vector2 weapon_tip = {
-        p1.position.x + cosf(p1.attack_angle) * p1.weapons[p1.active_weapon].range,
-        p1.position.y + sinf(p1.attack_angle) * p1.weapons[p1.active_weapon].range
-      };
-      if(CheckCollisionCircleLine(p2.position, p2.radius, p1.position, weapon_tip)){
-        p2.health -= p1.weapons[p1.active_weapon].damage;
-      }
-      if(p1.attack_timer >= w->attack_duration){
-        p1.is_attacking = false;
-        p1.attack_timer = 0.0f;
-      }
-    }
+
     // reloading check
     if(IsKeyPressed(KEY_R) && !p1.is_reloading){
      p1.is_reloading = true;
